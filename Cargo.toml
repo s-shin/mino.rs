@@ -1,0 +1,5 @@
+[workspace]
+members = [
+  "mino_cli",
+  "mino_core",
+]
