@@ -3,7 +3,7 @@ use std::ops::Range;
 
 /// Low level grid object.
 /// Columns are numbered from left to right, and rows from bottom to top.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Grid<C> {
     num_rows: usize,
     num_cols: usize,
@@ -158,6 +158,7 @@ impl Default for Rotation {
 
 //---
 
+#[derive(Debug, Copy, Clone)]
 pub struct FallingPiece<Block> {
     pub piece: Block,
     pub x: usize,
@@ -165,18 +166,21 @@ pub struct FallingPiece<Block> {
     pub rotation: Rotation,
 }
 
+#[derive(Debug, Clone)]
 pub struct Playfield<B> {
     pub visible_rows: usize,
     pub grid: Grid<Cell<B>>,
 }
 
+/// G = cells / frame
 pub type Gravity = f32;
 
-// 60 fps
+/// 60 fps
 pub type Frames = u8;
 
 pub struct GameParams {
-    pub soft_drop: Gravity,
+    pub gravity: Gravity,
+    pub soft_drop_gravity: Gravity,
     pub lock_delay: Frames,
     pub das_delay: Frames,
     pub das_period: Frames,
@@ -184,7 +188,20 @@ pub struct GameParams {
     pub line_clear_delay: Frames,
 }
 
-// PPT: das 11f, 2f
+impl Default for GameParams {
+    fn default() -> Self {
+        // TODO
+        GameParams {
+            gravity: 0.167,
+            soft_drop_gravity: 1,
+            lock_delay: 60,
+            das_delay: 11,
+            das_period: 2,
+            are: 40,
+            line_clear_delay: 40,
+        }
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum Input {
@@ -197,58 +214,69 @@ pub enum Input {
     Hold,
 }
 
-pub struct InputFrameCounter {
-    pub move_left: usize,
-    pub move_right: usize,
+#[derive(Debug, Copy, Clone)]
+pub struct Counter {
+    pub move_left: Frames,
+    pub move_right: Frames,
+    pub gravity: Gravity,
+    pub are: Frames,
 }
 
+impl Counter {
+    pub fn rows_to_be_dropped(&self) -> usize {
+        self.gravity as usize
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct GameState<Block> {
     pub playfield: Playfield<Block>,
     pub falling_piece: Option<FallingPiece<Block>>,
     pub hold_pieces: Vec<Block>,
     pub next_pieces: Vec<Block>,
-    pub gravity: Gravity,
-    pub input_frame_counter: InputFrameCounter,
+    pub counter: Counter,
 }
 
-impl<B> GameState<B> {
-    pub fn update(&mut self, input: Input) {
+pub trait GameLogic<B> {
+    fn can_put(&self, p: FallingPiece<B>, dst: &Grid<Cell<B>>) -> bool;
+    /// If overwritten, return true.
+    fn put(&self, p: FallingPiece<B>, dst: &Grid<Cell<B>>) -> bool;
+    fn rows_dropped_by_hard_drop(&self, field: &Grid<Cell<B>>, p: FallingPiece<B>)
+        -> Option<usize>;
+    fn generate_next(&self) -> Vec<B>;
+}
+
+pub fn update<B, Logic: GameLogic<B>>(
+    logic: &Logic,
+    params: &GameParams,
+    state: &mut GameState<B>,
+    input: Input,
+) {
+    if let Some(falling_piece) = &state.falling_piece {
         match input {
-            //
+            Input::HardDrop => {
+                // TODO
+            }
+            _ => {}
         }
-        // TODO
+    } else {
+        // wait for ARE.
+        if state.counter.are <= params.are {
+            state.counter.are += 1;
+            return;
+        }
+        // generate next pieces.
+        state.counter.are = 0;
+        let mut bs = logic.generate_next();
+        state.next_pieces.append(&mut bs);
+        // set falling piece.
+        if let Some(b) = state.next_pieces.pop() {
+            state.falling_piece = Some(FallingPiece {
+                piece: b,
+                x: 0,
+                y: 0,
+                rotation: Rotation::default(),
+            });
+        }
     }
 }
-
-// pub const NUM_INPUT_VARIANTS: usize = 6;
-
-// pub struct InputFrameCounter {
-//     counts: [usize; NUM_INPUT_VARIANTS],
-// }
-
-// impl InputFrameCounter {
-//     pub fn new() -> InputFrameCounter {
-//         InputFrameCounter {
-//             counts: [0; NUM_INPUT_VARIANTS],
-//         }
-//     }
-
-//     pub fn add(&mut self, input: Input, delta: usize) -> usize {
-//         self.counts[input as usize] += delta;
-//         self.get(input)
-//     }
-
-//     pub fn get(&self, input: Input) -> usize {
-//         self.counts[input as usize]
-//     }
-
-//     pub fn set(&mut self, input: Input, n: usize) {
-//         self.counts[input as usize] = n
-//     }
-
-//     pub fn reset(&mut self) {
-//         for i in 0..NUM_INPUT_VARIANTS {
-//             self.counts[i] = 0
-//         }
-//     }
-// }
