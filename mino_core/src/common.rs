@@ -10,6 +10,14 @@ pub struct Grid<C> {
     cells: Vec<C>,
 }
 
+bitflags! {
+    pub struct OverlayResult: u32 {
+        const OK = 0b00000000;
+        const OVERFLOW = 0b00000001;
+        const OVERLAP = 0b00000010;
+    }
+}
+
 impl<C> Grid<C>
 where
     C: Default + Copy,
@@ -37,6 +45,17 @@ where
 
     pub fn get_cell(&self, x: usize, y: usize) -> C {
         self.cells[self.get_cell_index(x, y)]
+    }
+
+    /// (x, y) is at the center of grid.
+    pub fn check_overlay(&self, x: usize, y: usize, grid: &Grid<C>) -> OverlayResult {
+        // TODO
+        OverlayResult::OK
+    }
+
+    pub fn overlay(&self, x: usize, y: usize, grid: &Grid<C>) -> OverlayResult {
+        // TODO
+        OverlayResult::OK
     }
 }
 
@@ -100,23 +119,23 @@ where
 //---
 
 #[derive(Debug, Copy, Clone)]
-pub enum Cell<T> {
+pub enum Cell<Piece> {
     Empty,
-    Block(T),
+    Block(Piece),
     Garbage,
 }
 
-impl<T> Default for Cell<T> {
+impl<P> Default for Cell<P> {
     fn default() -> Self {
         Cell::Empty
     }
 }
 
-impl<T: fmt::Display> fmt::Display for Cell<T> {
+impl<P: fmt::Display> fmt::Display for Cell<P> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Cell::Empty => write!(formatter, " "),
-            Cell::Block(b) => write!(formatter, "{}", b),
+            Cell::Block(p) => write!(formatter, "{}", p),
             Cell::Garbage => write!(formatter, "x"),
         }
     }
@@ -158,18 +177,22 @@ impl Default for Rotation {
 
 //---
 
+pub trait Piece<P> {
+    fn grid(&self, rotation: Rotation) -> &Grid<Cell<P>>;
+}
+
 #[derive(Debug, Copy, Clone)]
-pub struct FallingPiece<Block> {
-    pub piece: Block,
+pub struct FallingPiece<Piece> {
+    pub piece: Piece,
     pub x: usize,
     pub y: usize,
     pub rotation: Rotation,
 }
 
 #[derive(Debug, Clone)]
-pub struct Playfield<B> {
+pub struct Playfield<Piece> {
     pub visible_rows: usize,
-    pub grid: Grid<Cell<B>>,
+    pub grid: Grid<Cell<Piece>>,
 }
 
 /// G = cells / frame
@@ -186,6 +209,8 @@ pub struct GameParams {
     pub das_period: Frames,
     pub are: Frames,
     pub line_clear_delay: Frames,
+    /// `falling_piece_y = visible_rows + spawning_row_offset`
+    pub spawning_row_offset: i32,
 }
 
 impl Default for GameParams {
@@ -193,12 +218,13 @@ impl Default for GameParams {
         // TODO
         GameParams {
             gravity: 0.167,
-            soft_drop_gravity: 1,
+            soft_drop_gravity: 1.0,
             lock_delay: 60,
             das_delay: 11,
             das_period: 2,
             are: 40,
             line_clear_delay: 40,
+            spawning_row_offset: -1,
         }
     }
 }
@@ -229,27 +255,27 @@ impl Counter {
 }
 
 #[derive(Debug, Clone)]
-pub struct GameState<Block> {
-    pub playfield: Playfield<Block>,
-    pub falling_piece: Option<FallingPiece<Block>>,
-    pub hold_pieces: Vec<Block>,
-    pub next_pieces: Vec<Block>,
+pub struct GameState<Piece> {
+    pub playfield: Playfield<Piece>,
+    pub falling_piece: Option<FallingPiece<Piece>>,
+    pub hold_pieces: Vec<Piece>,
+    pub next_pieces: Vec<Piece>,
     pub counter: Counter,
 }
 
-pub trait GameLogic<B> {
-    fn can_put(&self, p: FallingPiece<B>, dst: &Grid<Cell<B>>) -> bool;
+pub trait GameLogic<P> {
+    fn can_put(&self, p: FallingPiece<P>, dst: &Grid<Cell<P>>) -> bool;
     /// If overwritten, return true.
-    fn put(&self, p: FallingPiece<B>, dst: &Grid<Cell<B>>) -> bool;
-    fn rows_dropped_by_hard_drop(&self, field: &Grid<Cell<B>>, p: FallingPiece<B>)
+    fn put(&self, p: FallingPiece<P>, dst: &Grid<Cell<P>>) -> bool;
+    fn rows_dropped_by_hard_drop(&self, field: &Grid<Cell<P>>, p: FallingPiece<P>)
         -> Option<usize>;
-    fn generate_next(&self) -> Vec<B>;
+    fn generate_next(&self) -> Vec<P>;
 }
 
-pub fn update<B, Logic: GameLogic<B>>(
+pub fn update<P, Logic: GameLogic<P>>(
     logic: &Logic,
     params: &GameParams,
-    state: &mut GameState<B>,
+    state: &mut GameState<P>,
     input: Input,
 ) {
     if let Some(falling_piece) = &state.falling_piece {
@@ -267,14 +293,14 @@ pub fn update<B, Logic: GameLogic<B>>(
         }
         // generate next pieces.
         state.counter.are = 0;
-        let mut bs = logic.generate_next();
-        state.next_pieces.append(&mut bs);
+        let mut ps = logic.generate_next();
+        state.next_pieces.append(&mut ps);
         // set falling piece.
-        if let Some(b) = state.next_pieces.pop() {
+        if let Some(p) = state.next_pieces.pop() {
             state.falling_piece = Some(FallingPiece {
-                piece: b,
-                x: 0,
-                y: 0,
+                piece: p,
+                x: state.playfield.grid.num_cols / 2,
+                y: ((state.playfield.visible_rows as i32) + params.spawning_row_offset) as usize,
                 rotation: Rotation::default(),
             });
         }
