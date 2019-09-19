@@ -3,7 +3,7 @@
 use std::fmt;
 
 #[derive(Debug, Copy, Clone)]
-pub enum Block {
+pub enum Piece {
   I,
   T,
   O,
@@ -13,15 +13,17 @@ pub enum Block {
   L,
 }
 
-impl fmt::Display for Block {
+impl super::common::Piece for Piece {}
+
+impl fmt::Display for Piece {
   fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
     write!(formatter, "{:?}", self)
   }
 }
 
-pub type Cell = super::common::Cell<Block>;
-pub type Grid = super::common::Grid<Cell>;
-pub type GridFormatter = super::common::GridFormatter<Cell>;
+pub type Cell = super::common::Cell<Piece>;
+pub type Grid = super::common::grid::Grid<Cell>;
+pub type GridFormatter = super::common::grid::GridFormatter<Cell>;
 // pub type Piece = super::common::Piece<Block>;
 // pub type FallingPiece = super::common::FallingPiece<Block>;
 

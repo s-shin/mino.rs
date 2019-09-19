@@ -1,6 +1,6 @@
 extern crate mino_core;
 
-use mino_core::common::GridFormatterOptions;
+use mino_core::common::grid::GridFormatterOptions;
 use mino_core::tetro::*;
 
 fn main() {
@@ -8,11 +8,11 @@ fn main() {
     for x in 1..9 {
         field.set_cell(x, 0, Cell::Garbage);
     }
-    field.set_cell(0, 1, Cell::Block(Block::O));
-    field.set_cell(1, 1, Cell::Block(Block::O));
-    field.set_cell(0, 2, Cell::Block(Block::O));
-    field.set_cell(1, 2, Cell::Block(Block::O));
-    let _cell = field.get_cell(0, 0);
+    field.set_cell(0, 1, Cell::Block(Piece::O));
+    field.set_cell(1, 1, Cell::Block(Piece::O));
+    field.set_cell(0, 2, Cell::Block(Piece::O));
+    field.set_cell(1, 2, Cell::Block(Piece::O));
+    let _cell = field.cell(0, 0);
     // println!("Field: {:?}", field);
     println!(
         "{}",

@@ -1,137 +1,34 @@
 use std::fmt;
-use std::ops::Range;
 
-/// Low level grid object.
-/// Columns are numbered from left to right, and rows from bottom to top.
-#[derive(Debug, Clone)]
-pub struct Grid<C> {
-    num_rows: usize,
-    num_cols: usize,
-    cells: Vec<C>,
-}
+pub mod grid;
 
-bitflags! {
-    pub struct OverlayResult: u32 {
-        const OK = 0b00000000;
-        const OVERFLOW = 0b00000001;
-        const OVERLAP = 0b00000010;
-    }
-}
-
-impl<C> Grid<C>
-where
-    C: Default + Copy,
-{
-    pub fn new(cols: usize, rows: usize, mut cells: Vec<C>) -> Grid<C> {
-        let num = cols * rows;
-        cells.resize(num, C::default());
-        Grid {
-            num_cols: cols,
-            num_rows: rows,
-            cells: cells,
-        }
-    }
-
-    pub fn get_cell_index(&self, x: usize, y: usize) -> usize {
-        assert!(x < self.num_cols);
-        assert!(y < self.num_rows);
-        x + y * self.num_cols
-    }
-
-    pub fn set_cell(&mut self, x: usize, y: usize, cell: C) {
-        let idx = self.get_cell_index(x, y);
-        self.cells[idx] = cell;
-    }
-
-    pub fn get_cell(&self, x: usize, y: usize) -> C {
-        self.cells[self.get_cell_index(x, y)]
-    }
-
-    /// (x, y) is at the center of grid.
-    pub fn check_overlay(&self, x: usize, y: usize, grid: &Grid<C>) -> OverlayResult {
-        // TODO
-        OverlayResult::OK
-    }
-
-    pub fn overlay(&self, x: usize, y: usize, grid: &Grid<C>) -> OverlayResult {
-        // TODO
-        OverlayResult::OK
-    }
-}
-
-pub struct GridFormatterOptions {
-    pub str_begin_of_line: &'static str,
-    pub str_end_of_line: &'static str,
-    pub range_x: Option<Range<usize>>,
-    pub range_y: Option<Range<usize>>,
-}
-
-impl Default for GridFormatterOptions {
-    fn default() -> Self {
-        Self {
-            str_begin_of_line: "",
-            str_end_of_line: "",
-            range_x: Option::None,
-            range_y: Option::None,
-        }
-    }
-}
-
-pub struct GridFormatter<C> {
-    pub grid: Grid<C>,
-    pub opts: GridFormatterOptions,
-}
-
-impl<C> fmt::Display for GridFormatter<C>
-where
-    C: Default + Copy + fmt::Display,
-{
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let range_x = match self.opts.range_x.clone() {
-            None => 0..(self.grid.num_cols - 1),
-            Some(x) => x,
-        };
-        let range_y = match self.opts.range_y.clone() {
-            None => 0..(self.grid.num_rows - 1),
-            Some(y) => y,
-        };
-        // write cells from top to bottom.
-        for y in range_y.rev() {
-            if let Err(r) = formatter.write_str(self.opts.str_begin_of_line) {
-                return Err(r);
-            }
-            for x in range_x.clone() {
-                if let Err(r) = self.grid.get_cell(x, y).fmt(formatter) {
-                    return Err(r);
-                }
-            }
-            if let Err(r) = formatter.write_str(self.opts.str_end_of_line) {
-                return Err(r);
-            }
-            if let Err(r) = formatter.write_str("\n") {
-                return Err(r);
-            }
-        }
-        Ok(())
-    }
-}
-
-//---
+// TODO: replace to trait alias in the future.
+// https://github.com/rust-lang/rfcs/blob/master/text/1733-trait-alias.md
+pub trait Piece: Copy {}
 
 #[derive(Debug, Copy, Clone)]
-pub enum Cell<Piece> {
+pub enum Cell<P: Piece> {
     Empty,
-    Block(Piece),
+    Block(P),
     Garbage,
 }
 
-impl<P> Default for Cell<P> {
+impl<P: Piece> grid::IsEmpty for Cell<P> {
+    fn is_empty(&self) -> bool {
+        match self {
+            Cell::Empty => true,
+            _ => false,
+        }
+    }
+}
+
+impl<P: Piece> Default for Cell<P> {
     fn default() -> Self {
         Cell::Empty
     }
 }
 
-impl<P: fmt::Display> fmt::Display for Cell<P> {
+impl<P: Piece + fmt::Display> fmt::Display for Cell<P> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Cell::Empty => write!(formatter, " "),
@@ -177,22 +74,18 @@ impl Default for Rotation {
 
 //---
 
-pub trait Piece<P> {
-    fn grid(&self, rotation: Rotation) -> &Grid<Cell<P>>;
-}
-
 #[derive(Debug, Copy, Clone)]
-pub struct FallingPiece<Piece> {
-    pub piece: Piece,
+pub struct FallingPiece<P: Piece> {
+    pub piece: P,
     pub x: usize,
     pub y: usize,
     pub rotation: Rotation,
 }
 
 #[derive(Debug, Clone)]
-pub struct Playfield<Piece> {
+pub struct Playfield<P: Piece> {
     pub visible_rows: usize,
-    pub grid: Grid<Cell<Piece>>,
+    pub grid: grid::Grid<Cell<P>>,
 }
 
 /// G = cells / frame
@@ -255,24 +148,25 @@ impl Counter {
 }
 
 #[derive(Debug, Clone)]
-pub struct GameState<Piece> {
-    pub playfield: Playfield<Piece>,
-    pub falling_piece: Option<FallingPiece<Piece>>,
-    pub hold_pieces: Vec<Piece>,
-    pub next_pieces: Vec<Piece>,
+pub struct GameState<P: Piece> {
+    pub playfield: Playfield<P>,
+    pub falling_piece: Option<FallingPiece<P>>,
+    pub hold_pieces: Vec<P>,
+    pub next_pieces: Vec<P>,
     pub counter: Counter,
 }
 
-pub trait GameLogic<P> {
-    fn can_put(&self, p: FallingPiece<P>, dst: &Grid<Cell<P>>) -> bool;
-    /// If overwritten, return true.
-    fn put(&self, p: FallingPiece<P>, dst: &Grid<Cell<P>>) -> bool;
-    fn rows_dropped_by_hard_drop(&self, field: &Grid<Cell<P>>, p: FallingPiece<P>)
-        -> Option<usize>;
+pub trait GameLogic<P: Piece> {
+    // fn can_put(&self, p: FallingPiece<P>, dst: &Grid<Cell<P>>) -> bool;
+    // /// If overwritten, return true.
+    // fn put(&self, p: FallingPiece<P>, dst: &Grid<Cell<P>>) -> bool;
+    // fn rows_dropped_by_hard_drop(&self, field: &Grid<Cell<P>>, p: FallingPiece<P>)
+    //     -> Option<usize>;
+    fn piece_grid(&self, piece: P, rotation: Rotation) -> &grid::Grid<Cell<P>>;
     fn generate_next(&self) -> Vec<P>;
 }
 
-pub fn update<P, Logic: GameLogic<P>>(
+pub fn update<P: Piece, Logic: GameLogic<P>>(
     logic: &Logic,
     params: &GameParams,
     state: &mut GameState<P>,
@@ -299,7 +193,7 @@ pub fn update<P, Logic: GameLogic<P>>(
         if let Some(p) = state.next_pieces.pop() {
             state.falling_piece = Some(FallingPiece {
                 piece: p,
-                x: state.playfield.grid.num_cols / 2,
+                x: state.playfield.grid.num_cols() / 2,
                 y: ((state.playfield.visible_rows as i32) + params.spawning_row_offset) as usize,
                 rotation: Rotation::default(),
             });
