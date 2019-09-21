@@ -14,15 +14,15 @@
 //!      |     +---------+       |
 //!      |     |         |       |
 //!      |     |         |       |
-//!      |     |       *<---->*  |
-//!      |     |       * |       |
-//!      |     |       ^ |       |
-//!      |     +-------|-+       |
-//!      |   (x,y)     |         |
-//!      |         neighbor      |
-//!      |             |         |
-//!      |             v         |
-//!      +-------------------------->
+//!      |     |         |       |
+//!      |     |         |       |
+//!      |     |         |       |
+//!      |     +---------+       |
+//!      |   (x,y)               |
+//!      |                       |
+//!      |                       |
+//!      |                       |
+//!      +-----------------------+-->
 //!    (0,0)                   (N,0)
 //! ```
 
@@ -105,13 +105,6 @@ bitflags! {
     }
 }
 
-pub enum Side {
-    Left,
-    Right,
-    Bottom,
-    Top,
-}
-
 impl<C> Grid<C>
 where
     C: Clone + IsEmpty,
@@ -173,10 +166,30 @@ where
         result
     }
 
-    /// Return offset of neighbor non-empty cell or edge toward the side.
-    pub fn neighbor(&self, x: i32, y: i32, sub: &Grid<C>, side: Side) -> usize {
-        // TODO
-        1
+    // Return (n, result) if overlap(x + dx * n, y + dy * n, sub) is not empty.
+    pub fn check_overlay_toward(
+        &self,
+        x: i32,
+        y: i32,
+        sub: &Grid<C>,
+        dx: i32,
+        dy: i32,
+    ) -> (usize, OverlayResult) {
+        assert!(dx != 0 || dy != 0);
+        let mut r: OverlayResult;
+        let mut n: usize = 0;
+        let mut tx = x;
+        let mut ty = y;
+        loop {
+            r = self.check_overlay(tx, ty, &sub);
+            if !r.is_empty() {
+                break;
+            }
+            tx += dx;
+            ty += dy;
+            n += 1;
+        }
+        (n, r)
     }
 }
 
@@ -302,14 +315,22 @@ mod tests {
         assert!(r.contains(OverlayResult::OVERFLOW));
         assert!(r.contains(OverlayResult::OVERLAP));
 
+        assert_eq!(
+            (0, OverlayResult::OVERLAP),
+            grid.check_overlay_toward(0, 0, &sub, 1, 0)
+        );
+        assert_eq!(
+            (2, OverlayResult::OVERFLOW),
+            grid.check_overlay_toward(1, 0, &sub, 1, 0)
+        );
+        assert_eq!(
+            (1, OverlayResult::OVERLAP),
+            grid.check_overlay_toward(1, 0, &sub, -1, 0)
+        );
+
         let r = grid.overlay(0, 1, &sub);
         assert!(r.is_empty());
         assert_eq!(1, grid.cell(0, 1));
         assert_eq!(1, grid.cell(1, 2));
-    }
-
-    #[test]
-    fn neighbor_test() {
-        // TODO
     }
 }
