@@ -3,11 +3,3 @@ extern crate bitflags;
 
 pub mod common;
 pub mod tetro;
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}

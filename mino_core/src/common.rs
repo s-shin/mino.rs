@@ -193,6 +193,7 @@ pub fn update<P: Piece, Logic: GameLogic<P>>(
         if let Some(p) = state.next_pieces.pop() {
             state.falling_piece = Some(FallingPiece {
                 piece: p,
+                // FIXME
                 x: state.playfield.grid.num_cols() / 2,
                 y: ((state.playfield.visible_rows as i32) + params.spawning_row_offset) as usize,
                 rotation: Rotation::default(),
