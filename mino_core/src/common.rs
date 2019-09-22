@@ -111,16 +111,15 @@ impl Default for LockDelayReset {
 bitflags! {
     /// http://harddrop.com/wiki/Top_out
     pub struct LossCondition: u32 {
-        const BLOCK_OUT = 0b00000001;
-        const LOCK_OUT = 0b00000010;
-        const PARTIAL_LOCK_OUT = 0b00000100;
-        const GARBAGE_OUT = 0b00001000;
+        const LOCK_OUT = 0b00000001;
+        const PARTIAL_LOCK_OUT = 0b00000010;
+        const GARBAGE_OUT = 0b00000100;
     }
 }
 
 impl Default for LossCondition {
     fn default() -> Self {
-        LossCondition::BLOCK_OUT | LossCondition::LOCK_OUT | LossCondition::GARBAGE_OUT
+        LossCondition::LOCK_OUT | LossCondition::GARBAGE_OUT
     }
 }
 
@@ -135,7 +134,6 @@ pub struct GameParams {
     pub are: Frames,
     pub line_clear_delay: Frames,
     pub loss_condition: LossCondition,
-    pub num_hold_pieces: usize,
 }
 
 impl Default for GameParams {
@@ -152,22 +150,30 @@ impl Default for GameParams {
             are: 40,
             line_clear_delay: 40,
             loss_condition: LossCondition::default(),
-            num_hold_pieces: 1,
         }
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum Input {
-    HardDrop,
-    SoftDrop,
-    // Useful for automation.
-    FirmDrop,
-    MoveLeft,
-    MoveRight,
-    RotateCw,
-    RotateCcw,
-    Hold,
+bitflags! {
+    #[derive(Default)]
+    pub struct Input: u32 {
+        /// Generally, up in DPAD.
+        const HARD_DROP = 0b00000001;
+        /// Generally, down in DPAD.
+        const SOFT_DROP = 0b00000010;
+        /// Rarely supported. Useful for automation.
+        const FIRM_DROP = 0b00000100;
+        /// Generally, left in DPAD.
+        const MOVE_LEFT = 0b00001000;
+        /// Generally, right in DPAD.
+        const MOVE_RIGHT = 0b00010000;
+        /// Generally, A/circle button.
+        const ROTATE_CW = 0b00100000;
+        /// Generally, B/cross button.
+        const ROTATE_CCW = 0b01000000;
+        /// Generally, L/R button.
+        const HOLD = 0b10000000;
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -177,6 +183,7 @@ pub struct Counter {
     pub gravity: Gravity,
     pub are: Frames,
     pub lock: Frames,
+    pub hold: bool,
 }
 
 impl Counter {
@@ -189,13 +196,27 @@ impl Counter {
 pub struct GameState<P: Piece> {
     pub playfield: Playfield<P>,
     pub falling_piece: Option<FallingPiece<P>>,
-    pub hold_pieces: Vec<P>,
+    pub hold_piece: Option<P>,
     pub next_pieces: Vec<P>,
     pub counter: Counter,
+    pub is_game_over: bool,
 }
 
 pub trait GameLogic<P: Piece> {
+    /// Return cached value for optimization.
     fn piece_grid(&self, piece: P, rotation: Rotation) -> &grid::Grid<Cell<P>>;
+    /// Return cached value for optimization.
+    fn piece_grid_top_padding(&self, piece: P, rotation: Rotation) -> usize {
+        let (n, ok) = self.piece_grid(piece, rotation).top_padding();
+        assert!(ok);
+        n
+    }
+    /// Return cached value for optimization.
+    fn piece_grid_bottom_padding(&self, piece: P, rotation: Rotation) -> usize {
+        let (n, ok) = self.piece_grid(piece, rotation).bottom_padding();
+        assert!(ok);
+        n
+    }
     fn generate_next_pieces(&self) -> Vec<P>;
     fn spawn_piece(&self, piece: P, playfield: &Playfield<P>) -> FallingPiece<P>;
 }
@@ -206,10 +227,25 @@ pub fn update<P: Piece, Logic: GameLogic<P>>(
     state: &mut GameState<P>,
     input: Input,
 ) {
-    if let Some(falling_piece) = state.falling_piece.as_mut() {
-        let piece_grid = logic.piece_grid(falling_piece.piece, falling_piece.rotation);
+    if state.is_game_over {
+        return;
+    }
 
-        let num_droppable_rows = {
+    if input.contains(Input::MOVE_LEFT) {
+        state.counter.move_left += 1;
+    } else {
+        state.counter.move_left = 0;
+    }
+    if input.contains(Input::MOVE_RIGHT) {
+        state.counter.move_right += 1;
+    } else {
+        state.counter.move_right = 0;
+    }
+
+    let mut num_droppable_rows: i32 = 0;
+    if let Some(falling_piece) = state.falling_piece.as_ref() {
+        let piece_grid = logic.piece_grid(falling_piece.piece, falling_piece.rotation);
+        num_droppable_rows = {
             let (n, _r) = state.playfield.grid.check_overlay_toward(
                 falling_piece.x as i32,
                 falling_piece.y as i32,
@@ -220,66 +256,16 @@ pub fn update<P: Piece, Logic: GameLogic<P>>(
             assert_ne!(0, n);
             n - 1
         } as i32;
-
-        match input {
-            Input::HardDrop => {
-                // Lock falling piece.
-                let r = state.playfield.grid.overlay(
-                    falling_piece.x as i32,
-                    falling_piece.y as i32 - num_droppable_rows,
-                    piece_grid,
-                );
-                assert!(r.is_empty());
-                state.falling_piece = None;
-                state.counter.gravity = 0.0;
-                state.counter.lock = 0;
-            }
-            Input::SoftDrop => {
-                let g = state.counter.gravity + params.gravity + params.soft_drop_gravity;
-                let num_rows_to_be_dropped = g as i32;
-                if params.lock_delay_cancel && num_rows_to_be_dropped == 0 {
-                    // Lock falling piece.
-                    let r = state.playfield.grid.overlay(
-                        falling_piece.x as i32,
-                        falling_piece.y as i32 - num_droppable_rows,
-                        piece_grid,
-                    );
-                    assert!(r.is_empty());
-                    state.falling_piece = None;
-                    state.counter.gravity = 0.0;
-                    state.counter.lock = 0;
-                } else {
-                    state.counter.gravity -= num_rows_to_be_dropped as f32;
-                    if num_rows_to_be_dropped > 0 {
-                        falling_piece.y -= if num_droppable_rows < num_rows_to_be_dropped {
-                            num_droppable_rows
-                        } else {
-                            num_rows_to_be_dropped
-                        };
-                    }
-                    match params.lock_dekay_reset {
-                        LockDelayReset::EntryReset => {}
-                        _ => state.counter.lock = 0,
-                    }
-                }
-            }
-            Input::FirmDrop => {
-                // TODO
-            }
-            Input::MoveLeft | Input::MoveRight => {
-                // TODO
-            }
-            Input::RotateCw | Input::RotateCcw => {
-                // TODO
-            }
-            Input::Hold => {
-                // TODO
-                state.falling_piece = None;
-                state.counter.gravity = 0.0;
-                state.counter.lock = 0;
-            }
+        if num_droppable_rows == 0 {
+            state.counter.lock += 1;
+            state.counter.gravity = 0.0;
+        } else {
+            state.counter.lock = 0;
+            state.counter.gravity += params.gravity;
         }
-    } else {
+    }
+
+    if state.falling_piece.is_none() {
         // Wait for ARE.
         if state.counter.are <= params.are {
             state.counter.are += 1;
@@ -292,8 +278,107 @@ pub fn update<P: Piece, Logic: GameLogic<P>>(
         state.next_pieces.append(&mut ps);
         // Set falling piece.
         if let Some(p) = state.next_pieces.pop() {
-            state.falling_piece = Some(logic.spawn_piece(p, &state.playfield));
-            // TODO: check overlay
+            let fp = logic.spawn_piece(p, &state.playfield);
+            let r = state.playfield.grid.check_overlay(
+                fp.x,
+                fp.y,
+                logic.piece_grid(fp.piece, fp.rotation),
+            );
+            if !r.is_empty() {
+                state.is_game_over = true;
+            }
+            state.falling_piece = Some(fp);
         }
+        return;
+    }
+
+    if let Some(falling_piece) = state.falling_piece.as_mut() {
+        let piece_grid = logic.piece_grid(falling_piece.piece, falling_piece.rotation);
+        let mut should_lock = false;
+
+        if input.contains(Input::HARD_DROP) {
+            should_lock = true;
+        }
+
+        if input.contains(Input::SOFT_DROP) {
+            let g = state.counter.gravity + params.gravity + params.soft_drop_gravity;
+            let num_rows_to_be_dropped = g as i32;
+            should_lock = params.lock_delay_cancel && num_rows_to_be_dropped == 0;
+            if !should_lock {
+                state.counter.gravity -= num_rows_to_be_dropped as f32;
+                if num_rows_to_be_dropped > 0 {
+                    falling_piece.y -= if num_droppable_rows < num_rows_to_be_dropped {
+                        num_droppable_rows
+                    } else {
+                        num_rows_to_be_dropped
+                    };
+                }
+                match params.lock_dekay_reset {
+                    LockDelayReset::EntryReset => {}
+                    _ => state.counter.lock = 0,
+                }
+                return;
+            }
+        }
+
+        if should_lock {
+            // Lock.
+            if params.loss_condition.contains(LossCondition::LOCK_OUT) {
+                let padding =
+                    logic.piece_grid_bottom_padding(falling_piece.piece, falling_piece.rotation);
+                state.is_game_over =
+                    falling_piece.y + padding as i32 >= state.playfield.visible_rows as i32;
+            }
+            if params
+                .loss_condition
+                .contains(LossCondition::PARTIAL_LOCK_OUT)
+            {
+                let padding =
+                    logic.piece_grid_top_padding(falling_piece.piece, falling_piece.rotation);
+                state.is_game_over = falling_piece.y + (piece_grid.num_rows() - padding) as i32
+                    >= state.playfield.visible_rows as i32;
+            }
+            if !state.is_game_over {
+                let r = state.playfield.grid.overlay(
+                    falling_piece.x as i32,
+                    falling_piece.y as i32 - num_droppable_rows,
+                    piece_grid,
+                );
+                assert!(r.is_empty());
+                state.falling_piece = None;
+            }
+            state.counter.gravity = 0.0;
+            state.counter.lock = 0;
+            state.counter.hold = false;
+            return;
+        }
+
+        if input.contains(Input::FIRM_DROP) {
+            if num_droppable_rows > 0 {
+                falling_piece.y -= num_droppable_rows;
+            }
+            return;
+        }
+
+        if state.counter.hold && input.contains(Input::HOLD) {
+            if let Some(p) = state.hold_piece {
+                let fp = logic.spawn_piece(p, &state.playfield);
+                let r = state.playfield.grid.check_overlay(
+                    fp.x,
+                    fp.y,
+                    logic.piece_grid(fp.piece, fp.rotation),
+                );
+                if !r.is_empty() {
+                    state.is_game_over = true;
+                }
+                state.falling_piece = Some(fp);
+            }
+            state.counter.gravity = 0.0;
+            state.counter.lock = 0;
+            state.counter.hold = true;
+            return;
+        }
+
+        // TODO: rotation
     }
 }

@@ -191,6 +191,28 @@ where
         }
         (n, r)
     }
+
+    pub fn bottom_padding(&self) -> (usize, bool) {
+        for y in 0..self.num_rows {
+            for x in 0..self.num_cols {
+                if !self.cell(x, y).is_empty() {
+                    return (y, true);
+                }
+            }
+        }
+        (0, false)
+    }
+
+    pub fn top_padding(&self) -> (usize, bool) {
+        for y in (0..self.num_rows).rev() {
+            for x in 0..self.num_cols {
+                if !self.cell(x, y).is_empty() {
+                    return (y, true);
+                }
+            }
+        }
+        (0, false)
+    }
 }
 
 //---
