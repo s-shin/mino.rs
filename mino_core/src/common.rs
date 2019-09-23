@@ -219,6 +219,12 @@ pub trait GameLogic<P: Piece> {
     }
     fn generate_next_pieces(&self) -> Vec<P>;
     fn spawn_piece(&self, piece: P, playfield: &Playfield<P>) -> FallingPiece<P>;
+    fn rotate(
+        &self,
+        cw: bool,
+        falling_piece: &FallingPiece<P>,
+        playfield: &Playfield<P>,
+    ) -> Option<FallingPiece<P>>;
 }
 
 pub fn update<P: Piece, Logic: GameLogic<P>>(
@@ -322,7 +328,6 @@ pub fn update<P: Piece, Logic: GameLogic<P>>(
         }
 
         if should_lock {
-            // Lock.
             if params.loss_condition.contains(LossCondition::LOCK_OUT) {
                 let padding =
                     logic.piece_grid_bottom_padding(falling_piece.piece, falling_piece.rotation);
@@ -350,6 +355,7 @@ pub fn update<P: Piece, Logic: GameLogic<P>>(
             state.counter.gravity = 0.0;
             state.counter.lock = 0;
             state.counter.hold = false;
+            // TODO: line clear
             return;
         }
 
@@ -379,6 +385,16 @@ pub fn update<P: Piece, Logic: GameLogic<P>>(
             return;
         }
 
-        // TODO: rotation
+        if input.contains(Input::ROTATE_CW | Input::ROTATE_CCW) {
+            let rotated = logic.rotate(
+                input.contains(Input::ROTATE_CW),
+                falling_piece,
+                &state.playfield,
+            );
+            if let Some(fp) = rotated {
+                state.falling_piece = Some(fp);
+            }
+            return;
+        }
     }
 }
