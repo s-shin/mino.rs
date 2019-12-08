@@ -2,11 +2,9 @@
 //!
 //! Columns are numbered from left to right, and rows from bottom to top.
 //!
-//! # Overview
-//!
 //! ```ignore
 //!      ^
-//!      |           *non-empty cell
+//!      |
 //! (0,N)+-----------------------+
 //!      |                       |
 //!      |                       |
@@ -28,6 +26,8 @@
 
 use std::fmt;
 use std::ops::Range;
+#[macro_use]
+extern crate bitflags;
 
 #[derive(Debug, Clone)]
 pub struct Grid<C> {
@@ -53,7 +53,7 @@ where
 
 impl<C> Grid<C>
 where
-    C: Clone,
+    C: Default + Clone,
 {
     pub fn num_rows(&self) -> usize {
         self.num_rows
@@ -91,6 +91,49 @@ where
         }
         self
     }
+
+    pub fn rotate1(&self) -> Grid<C> {
+        let mut g = Grid::new(self.num_rows, self.num_cols, vec![]);
+        for y in 0..self.num_rows {
+            for x in 0..self.num_cols {
+                g.set_cell(y, self.num_cols - 1 - x, self.cell(x, y))
+            }
+        }
+        g
+    }
+    pub fn rotate2(&self) -> Grid<C> {
+        let mut g = Grid::new(self.num_cols, self.num_rows, vec![]);
+        for y in 0..self.num_rows {
+            for x in 0..self.num_cols {
+                g.set_cell(
+                    self.num_cols - 1 - x,
+                    self.num_rows - 1 - y,
+                    self.cell(x, y),
+                )
+            }
+        }
+        g
+    }
+    pub fn rotate3(&self) -> Grid<C> {
+        let mut g = Grid::new(self.num_rows, self.num_cols, vec![]);
+        for y in 0..self.num_rows {
+            for x in 0..self.num_cols {
+                g.set_cell(self.num_rows - 1 - y, x, self.cell(x, y))
+            }
+        }
+        g
+    }
+}
+
+impl<C> PartialEq for Grid<C>
+where
+    C: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.num_cols == other.num_cols
+            && self.num_rows == other.num_rows
+            && self.cells == other.cells
+    }
 }
 
 pub trait IsEmpty {
@@ -107,8 +150,17 @@ bitflags! {
 
 impl<C> Grid<C>
 where
-    C: Clone + IsEmpty,
+    C: Default + Clone + IsEmpty,
 {
+    pub fn is_row_filled(&self, y: usize) -> bool {
+        for x in 0..self.num_cols {
+            if self.cell(x, y).is_empty() {
+                return false;
+            }
+        }
+        true
+    }
+
     pub fn check_overlay(&self, x: i32, y: i32, sub: &Grid<C>) -> OverlayResult {
         let mut result = OverlayResult::empty();
         for sub_y in 0..sub.num_rows {
@@ -166,7 +218,7 @@ where
         result
     }
 
-    // Return (n, result) if overlap(x + dx * n, y + dy * n, sub) is not empty.
+    /// Return (n, result) if overlap(x + dx * n, y + dy * n, sub) is not empty.
     pub fn check_overlay_toward(
         &self,
         x: i32,
@@ -217,14 +269,14 @@ where
 
 //---
 
-pub struct GridFormatterOptions {
+pub struct GridFormatOptions {
     pub str_begin_of_line: &'static str,
     pub str_end_of_line: &'static str,
     pub range_x: Option<Range<usize>>,
     pub range_y: Option<Range<usize>>,
 }
 
-impl Default for GridFormatterOptions {
+impl Default for GridFormatOptions {
     fn default() -> Self {
         Self {
             str_begin_of_line: "",
@@ -235,22 +287,22 @@ impl Default for GridFormatterOptions {
     }
 }
 
-pub struct GridFormatter<C> {
-    pub grid: Grid<C>,
-    pub opts: GridFormatterOptions,
+pub struct GridFormatter<'a, C> {
+    pub grid: &'a Grid<C>,
+    pub opts: GridFormatOptions,
 }
 
-impl<C> fmt::Display for GridFormatter<C>
+impl<'a, C> fmt::Display for GridFormatter<'a, C>
 where
     C: Default + Clone + fmt::Display,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let range_x = match self.opts.range_x.clone() {
-            None => 0..(self.grid.num_cols - 1),
+            None => 0..self.grid.num_cols,
             Some(x) => x,
         };
         let range_y = match self.opts.range_y.clone() {
-            None => 0..(self.grid.num_rows - 1),
+            None => 0..self.grid.num_rows,
             Some(y) => y,
         };
         // write cells from top to bottom.
@@ -354,5 +406,91 @@ mod tests {
         assert!(r.is_empty());
         assert_eq!(1, grid.cell(0, 1));
         assert_eq!(1, grid.cell(1, 2));
+    }
+
+    #[test]
+    fn eq_test() {
+        let grid = MyGrid::new(1, 2, vec![1, 2]);
+        assert_eq!(grid, grid.clone());
+    }
+
+    #[test]
+    fn rotate_test() {
+        let mut grid = MyGrid::new(
+            3,
+            2,
+            vec![
+                1, 2, 3, //
+                4, 5, 6, //
+            ],
+        );
+        grid.reverse_rows();
+
+        let mut expected1 = MyGrid::new(
+            2,
+            3,
+            vec![
+                4, 1, //
+                5, 2, //
+                6, 3, //
+            ],
+        );
+        expected1.reverse_rows();
+
+        let mut expected2 = MyGrid::new(
+            3,
+            2,
+            vec![
+                6, 5, 4, //
+                3, 2, 1, //
+            ],
+        );
+        expected2.reverse_rows();
+
+        let mut expected3 = MyGrid::new(
+            2,
+            3,
+            vec![
+                3, 6, //
+                2, 5, //
+                1, 4, //
+            ],
+        );
+        expected3.reverse_rows();
+
+        assert_eq!(expected1, grid.rotate1());
+        assert_eq!(expected2, grid.rotate2());
+        assert_eq!(expected3, grid.rotate3());
+    }
+
+    #[test]
+    fn formatter_test() {
+        let mut grid = MyGrid::new(2, 3, vec![1, 2, 3, 4, 5, 6]);
+        grid.reverse_rows();
+        assert_eq!(
+            "12\n34\n56\n",
+            format!(
+                "{}",
+                GridFormatter::<MyCell> {
+                    grid: &grid,
+                    opts: Default::default(),
+                },
+            ),
+        );
+        assert_eq!(
+            "B3E\n",
+            format!(
+                "{}",
+                GridFormatter::<MyCell> {
+                    grid: &grid,
+                    opts: GridFormatOptions {
+                        str_begin_of_line: "B",
+                        str_end_of_line: "E",
+                        range_x: Some(0..1),
+                        range_y: Some(1..2),
+                    }
+                },
+            ),
+        );
     }
 }
