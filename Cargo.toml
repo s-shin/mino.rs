@@ -3,5 +3,6 @@ members = [
   # "mino_cli",
   "mino_core",
   "grid",
+  "input_counter",
   "sandbox",
 ]

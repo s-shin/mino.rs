@@ -78,6 +78,18 @@ where
         self.cells[self.cell_index(x, y)].clone()
     }
 
+    pub fn fill_row(&mut self, y: usize, cell: C) {
+        for x in 0..self.num_cols {
+            self.set_cell(x, y, cell.clone());
+        }
+    }
+
+    pub fn fill_rows(&mut self, y_range: Range<usize>, cell: C) {
+        for y in y_range {
+            self.fill_row(y, cell.clone());
+        }
+    }
+
     /// Swap (x, y) for (x, num_rows - 1 - y).
     pub fn reverse_rows(&mut self) -> &mut Self {
         let n = self.num_rows / 2;
@@ -123,6 +135,15 @@ where
         }
         g
     }
+
+    pub fn move_row(&mut self, src_y: usize, dst_y: usize, placeholder: Option<C>) {
+        for x in 0..self.num_cols {
+            self.set_cell(x, dst_y, self.cell(x, src_y));
+            if let Some(cell) = placeholder.as_ref() {
+                self.set_cell(x, src_y, cell.clone());
+            }
+        }
+    }
 }
 
 impl<C> PartialEq for Grid<C>
@@ -159,6 +180,26 @@ where
             }
         }
         true
+    }
+
+    pub fn pluck_filled_rows(&mut self, placeholder: Option<C>) -> usize {
+        let mut n = 0;
+        for y in 0..self.num_rows {
+            if self.is_row_filled(y) {
+                n += 1;
+                continue;
+            }
+            if n > 0 {
+                self.move_row(y, y - n, None);
+            }
+            if y == self.num_rows - n {
+                break;
+            }
+        }
+        if let Some(cell) = placeholder.as_ref() {
+            self.fill_rows((self.num_rows - n)..self.num_rows, cell.clone());
+        }
+        n
     }
 
     pub fn check_overlay(&self, x: i32, y: i32, sub: &Grid<C>) -> OverlayResult {

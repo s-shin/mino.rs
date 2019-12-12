@@ -1,3 +1,4 @@
+use input_counter::{InputCounter, InputManager};
 use std::collections::VecDeque;
 use std::fmt;
 use std::hash::Hash;
@@ -229,7 +230,13 @@ impl Default for GameParams {
 }
 
 pub trait GameLogic<P: Piece> {
-    fn spawn_piece(&self, piece: Option<P>, playfield: &Playfield<P>) -> FallingPiece<P>;
+    fn spawn_piece(
+        &self,
+        piece: P,
+        num_cols: usize,
+        num_rows: usize,
+        num_visible_rows: usize,
+    ) -> FallingPiece<P>;
     fn rotate(
         &self,
         cw: bool,
@@ -260,79 +267,65 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default)]
-pub struct InputCounter {
-    pub move_left: Frames,
-    pub move_right: Frames,
-    pub rotate_cw: Frames,
-    pub rotate_ccw: Frames,
-    pub hold: Frames,
+const INPUTS: [Input; 8] = [
+    Input::HARD_DROP,
+    Input::SOFT_DROP,
+    Input::FIRM_DROP,
+    Input::MOVE_LEFT,
+    Input::MOVE_RIGHT,
+    Input::ROTATE_CW,
+    Input::ROTATE_CCW,
+    Input::HOLD,
+];
+
+pub struct InputIterator {
+    input: Input,
+    next_idx: usize,
 }
 
-impl InputCounter {
-    fn update(&mut self, params: &GameParams, input: Input) {
-        self.move_left = if input.contains(Input::MOVE_LEFT) {
-            if self.move_right > 0 {
-                self.move_right = 0;
-            }
-            // prevent overflow
-            if self.move_left == params.das + params.arr {
-                params.das + 1
-            } else {
-                self.move_left + 1
-            }
-        } else {
-            0
-        };
-        self.move_right = if input.contains(Input::MOVE_RIGHT) {
-            if self.move_left > 0 {
-                self.move_left = 0;
-            }
-            if self.move_right == params.das + params.arr {
-                params.das + 1
-            } else {
-                self.move_right + 1
-            }
-        } else {
-            0
-        };
-        self.rotate_cw = if input.contains(Input::ROTATE_CW) {
-            self.rotate_ccw = 0;
-            std::cmp::min(self.rotate_cw + 1, 2)
-        } else {
-            0
-        };
-        self.rotate_ccw = if input.contains(Input::ROTATE_CCW) {
-            self.rotate_cw = 0;
-            std::cmp::min(self.rotate_ccw + 1, 2)
-        } else {
-            0
-        };
-        self.hold = if input.contains(Input::HOLD) {
-            self.hold + 1
-        } else {
-            0
+impl InputIterator {
+    pub fn new(input: Input) -> Self {
+        Self {
+            input: input,
+            next_idx: 0,
         }
     }
-    fn should_move_left(&self, params: &GameParams) -> bool {
-        self.move_left == 1
-            || self.move_left == params.das
-            || self.move_left == params.das + params.arr
+}
+
+impl Iterator for InputIterator {
+    type Item = Input;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.next_idx < INPUTS.len() {
+            if self.input.contains(INPUTS[self.next_idx]) {
+                return Some(INPUTS[self.next_idx]);
+            }
+            self.next_idx += 1;
+        }
+        None
     }
-    fn should_move_right(&self, params: &GameParams) -> bool {
-        self.move_right == 1
-            || self.move_right == params.das
-            || self.move_right == params.das + params.arr
+}
+
+impl IntoIterator for Input {
+    type Item = Input;
+    type IntoIter = InputIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        InputIterator::new(self)
     }
-    fn should_rotate_cw(&self) -> bool {
-        self.rotate_cw == 1
-    }
-    fn should_rotate_ccw(&self) -> bool {
-        self.rotate_ccw == 1
-    }
-    fn should_hold(&self) -> bool {
-        self.hold == 1
-    }
+}
+
+pub fn new_input_manager(das: Frames, arr: Frames) -> InputManager<Input, Frames> {
+    let mut mgr = InputManager::default();
+    mgr.register(Input::HARD_DROP, InputCounter::new(0, 0));
+    mgr.register(Input::SOFT_DROP, InputCounter::new(0, 0));
+    mgr.register(Input::FIRM_DROP, InputCounter::new(0, 0));
+    mgr.register(Input::MOVE_LEFT, InputCounter::new(das, arr));
+    mgr.register(Input::MOVE_RIGHT, InputCounter::new(das, arr));
+    mgr.register(Input::ROTATE_CW, InputCounter::new(0, 0));
+    mgr.register(Input::ROTATE_CCW, InputCounter::new(0, 0));
+    mgr.register(Input::HOLD, InputCounter::new(0, 0));
+    mgr
 }
 
 pub struct GameConfig<Logic> {
@@ -346,12 +339,14 @@ pub struct GameStateData<P: Piece> {
     pub falling_piece: Option<FallingPiece<P>>,
     pub hold_piece: Option<P>,
     pub next_pieces: VecDeque<P>,
+    pub input_mgr: InputManager<Input, Frames>,
 }
 
 #[derive(Debug, Copy, Clone)]
 pub enum GameStateId {
     Init,
     Play,
+    Lock,
     LineClear,
     SpawnPiece,
     GameOver,
@@ -378,7 +373,7 @@ pub trait GameState<P: Piece, L> {
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         Ok(None)
     }
-    fn exit(&mut self, _data: &mut GameStateData<P>, _config: &GameConfig<L>) {}
+    // fn exit(&mut self, _data: &mut GameStateData<P>, _config: &GameConfig<L>) {}
 }
 
 impl<P: Piece, L> fmt::Display for dyn GameState<P, L> {
@@ -387,9 +382,16 @@ impl<P: Piece, L> fmt::Display for dyn GameState<P, L> {
     }
 }
 
-impl<P: Piece, L> From<Box<dyn GameState<P, L>>> for GameStateId {
-    fn from(s: Box<dyn GameState<P, L>>) -> GameStateId {
-        s.id()
+struct GameStateError {
+    reason: String,
+}
+
+impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateError {
+    fn id(&self) -> GameStateId {
+        GameStateId::Error
+    }
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "{}", self.reason)
     }
 }
 
@@ -413,35 +415,11 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateInit {
     }
 }
 
-struct GameStateError {
-    reason: String,
-}
-
-impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateError {
-    fn id(&self) -> GameStateId {
-        GameStateId::Error
-    }
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "{}", self.reason)
-    }
-}
-
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 struct GameStatePlay {
-    input_counter: InputCounter,
     gravity_counter: Gravity,
+    lock_delay_counter: Frames,
     is_piece_held: bool,
-}
-
-impl GameStatePlay {
-    fn reset_counter(&mut self) {
-        self.input_counter = Default::default();
-        self.gravity_counter = Default::default();
-    }
-    fn update_counter(&mut self, params: &GameParams, input: Input) {
-        self.input_counter.update(params, input);
-        self.gravity_counter += params.gravity;
-    }
 }
 
 impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
@@ -464,99 +442,159 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
         config: &GameConfig<L>,
         input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
-        self.update_counter(&config.params, input);
-        let handle_priority: Vec<Input> = vec![
-            Input::HARD_DROP,
-            Input::FIRM_DROP,
-            Input::HOLD,
-            Input::SOFT_DROP,
-        ];
-        for i in handle_priority {
-            if !input.contains(i) {
-                continue;
+        let input_mgr = &mut data.input_mgr;
+        input_mgr.update(input.into_iter());
+        let fp = data.falling_piece.as_mut().unwrap();
+        let playfield = &data.playfield;
+        let num_droppable_rows = fp.droppable_rows(playfield);
+
+        // HARD_DROP
+        if input.contains(Input::HARD_DROP) {
+            fp.y -= num_droppable_rows as i32;
+            return Ok(Some(Box::new(GameStateLock::default())));
+        }
+
+        // HOLD
+        if !self.is_piece_held && input_mgr.handle(Input::HOLD) {
+            self.is_piece_held = true;
+            let np = if let Some(p) = data.hold_piece {
+                p
+            } else {
+                if data.next_pieces.is_empty() {
+                    return Err("no next pieces".into());
+                }
+                data.next_pieces.pop_front().unwrap()
+            };
+            let sfp = config.logic.spawn_piece(
+                np,
+                playfield.grid.num_cols(),
+                playfield.grid.num_rows(),
+                playfield.visible_rows,
+            );
+            if !sfp.can_put_onto(playfield) {
+                return Ok(Some(Box::new(GameStateGameOver::default())));
             }
-            if i == Input::HARD_DROP {
-                self.reset_counter();
-                let fp = &mut data.falling_piece.unwrap();
-                let n = fp.droppable_rows(&data.playfield);
-                fp.y -= n as i32;
-                let r = config.params.loss_condition.check(fp, &data.playfield);
-                if !r.is_empty() {
-                    return Ok(Some(Box::new(GameStateGameOver::by_lock_out(r))));
-                }
-                let r = fp.put_onto(&mut data.playfield);
-                assert!(r.is_empty());
-                for y in 0..data.playfield.visible_rows {
-                    if data.playfield.grid.is_row_filled(y) {
-                        return Ok(Some(Box::new(GameStateLineClear {})));
-                    }
-                }
-                return Ok(Some(Box::new(GameStateSpawnPiece::default())));
+            data.hold_piece = Some(fp.piece);
+            data.falling_piece = Some(sfp);
+            self.gravity_counter = 0.0;
+            self.lock_delay_counter = 0;
+            return Ok(None);
+        }
+
+        // Others
+        if num_droppable_rows == 0 {
+            self.gravity_counter = 0.0;
+            self.lock_delay_counter += 1;
+            let should_lock = self.lock_delay_counter > config.params.lock_delay
+                || (config.params.lock_delay_cancel && input.contains(Input::SOFT_DROP));
+            if should_lock {
+                return Ok(Some(Box::new(GameStateLock::default())));
             }
-            if i == Input::FIRM_DROP {
-                self.reset_counter();
-                let fp = &mut data.falling_piece.unwrap();
-                let n = fp.droppable_rows(&data.playfield);
-                fp.y -= n as i32;
-                break;
-            }
-            if i == Input::HOLD {
-                if self.is_piece_held || !self.input_counter.should_hold() {
-                    continue;
-                }
-                self.is_piece_held = true;
-                let np = if let Some(p) = data.hold_piece {
-                    p
-                } else {
-                    if data.next_pieces.is_empty() {
-                        return Err("no next pieces".into());
-                    }
-                    data.next_pieces.pop_front().unwrap()
-                };
-                let fp = config.logic.spawn_piece(Some(np), &data.playfield);
-                if !fp.can_put_onto(&data.playfield) {
-                    return Ok(Some(Box::new(GameStateGameOver::default())));
-                }
-                data.hold_piece = Some(data.falling_piece.unwrap().piece);
-                data.falling_piece = Some(fp);
-                break;
-            }
-            let other = Input::SOFT_DROP
-                | Input::MOVE_LEFT
-                | Input::MOVE_RIGHT
-                | Input::ROTATE_CW
-                | Input::ROTATE_CCW;
-            if other.contains(i) {
-                let fp = data.falling_piece.unwrap();
-                let num_droppable_rows = fp.droppable_rows(&data.playfield);
-                if i == Input::SOFT_DROP {
-                    if num_droppable_rows == 0 {
-                        // lock
-                    }
-                    self.gravity_counter += config.params.soft_drop_gravity;
-                }
-                if self.input_counter.should_move_left(&config.params) {
-                    //
-                }
-                if self.input_counter.should_move_right(&config.params) {
-                    //
-                }
-                if self.input_counter.should_rotate_cw() {
-                    //
-                }
-                if self.input_counter.should_rotate_ccw() {
-                    //
-                }
-                if self.gravity_counter >= 1.0 {
-                    //
-                }
+        } else if input.contains(Input::FIRM_DROP) {
+            fp.y -= num_droppable_rows as i32;
+            self.gravity_counter = 0.0;
+            self.lock_delay_counter = 0;
+            return Ok(None);
+        } else {
+            self.gravity_counter += config.params.gravity;
+            if input.contains(Input::SOFT_DROP) {
+                self.gravity_counter += config.params.soft_drop_gravity;
             }
         }
+        let mut moved = fp.clone();
+        let dx = if input_mgr.handle(Input::MOVE_LEFT) {
+            -1
+        } else if input_mgr.handle(Input::MOVE_RIGHT) {
+            1
+        } else {
+            0
+        };
+        if dx != 0 {
+            let mut t = moved;
+            t.x -= dx;
+            if t.can_put_onto(playfield) {
+                moved = t;
+            }
+        }
+        let rotate = if input_mgr.handle(Input::ROTATE_CW) {
+            (true, true)
+        } else if input_mgr.handle(Input::ROTATE_CCW) {
+            (true, false)
+        } else {
+            (false, false)
+        };
+        if rotate.0 {
+            if let Some(rotated) = config.logic.rotate(rotate.1, &moved, playfield) {
+                moved = rotated;
+            }
+        }
+        let num_droppable_rows = moved.droppable_rows(playfield);
+        if num_droppable_rows == 0 {
+            self.gravity_counter = 0.0;
+        } else if self.gravity_counter >= 1.0 {
+            moved.y -= std::cmp::min(num_droppable_rows, self.gravity_counter as usize) as i32;
+            self.gravity_counter = 0.0;
+            self.lock_delay_counter = 0;
+        }
+        data.falling_piece = Some(moved);
         Ok(None)
     }
 }
 
-struct GameStateLineClear;
+#[derive(Default)]
+struct GameStateLock;
+
+impl GameStateLock {
+    fn lock<P: Piece, L: GameLogic<P>>(
+        &mut self,
+        data: &mut GameStateData<P>,
+        config: &GameConfig<L>,
+    ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
+        let fp = &data.falling_piece.unwrap();
+        let r = config.params.loss_condition.check(fp, &data.playfield);
+        if !r.is_empty() {
+            return Ok(Some(Box::new(GameStateGameOver::by_lock_out(r))));
+        }
+        let r = fp.put_onto(&mut data.playfield);
+        assert!(r.is_empty());
+        for y in 0..data.playfield.visible_rows {
+            if data.playfield.grid.is_row_filled(y) {
+                return Ok(Some(Box::new(GameStateLineClear::default())));
+            }
+        }
+        Ok(Some(Box::new(GameStateSpawnPiece::default())))
+    }
+}
+
+impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLock {
+    fn id(&self) -> GameStateId {
+        GameStateId::Lock
+    }
+    fn enter(
+        &mut self,
+        data: &mut GameStateData<P>,
+        _config: &GameConfig<L>,
+    ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
+        if data.falling_piece.is_none() {
+            return Err("falling_piece should not be none".into());
+        }
+        // NOTE: call self.lock() here if zero frame transition required
+        Ok(None)
+    }
+    fn update(
+        &mut self,
+        data: &mut GameStateData<P>,
+        config: &GameConfig<L>,
+        _input: Input,
+    ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
+        self.lock(data, config)
+    }
+}
+
+#[derive(Default)]
+struct GameStateLineClear {
+    counter: Frames,
+}
 
 impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLineClear {
     fn id(&self) -> GameStateId {
@@ -564,12 +602,21 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLineClear {
     }
     fn update(
         &mut self,
-        _data: &mut GameStateData<P>,
-        _config: &GameConfig<L>,
+        data: &mut GameStateData<P>,
+        config: &GameConfig<L>,
         _input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
-        // TODO
-        Ok(None)
+        if self.counter == 0 {
+            let n = data.playfield.grid.pluck_filled_rows(Some(Cell::Empty));
+            if n == 0 {
+                // TODO: no lines cleared!?
+            }
+        }
+        self.counter += 1;
+        if self.counter <= config.params.line_clear_delay {
+            return Ok(None);
+        }
+        Ok(Some(Box::new(GameStateSpawnPiece::default())))
     }
 }
 
