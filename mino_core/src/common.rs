@@ -541,7 +541,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 struct GameStateLock;
 
 impl GameStateLock {
@@ -591,9 +591,9 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLock {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 struct GameStateLineClear {
-    counter: Frames,
+    frame_count: Frames,
 }
 
 impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLineClear {
@@ -606,22 +606,24 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLineClear {
         config: &GameConfig<L>,
         _input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
-        if self.counter == 0 {
+        if self.frame_count == 0 {
             let n = data.playfield.grid.pluck_filled_rows(Some(Cell::Empty));
             if n == 0 {
                 // TODO: no lines cleared!?
             }
         }
-        self.counter += 1;
-        if self.counter <= config.params.line_clear_delay {
+        self.frame_count += 1;
+        if self.frame_count <= config.params.line_clear_delay {
             return Ok(None);
         }
         Ok(Some(Box::new(GameStateSpawnPiece::default())))
     }
 }
 
-#[derive(Default)]
-struct GameStateSpawnPiece {}
+#[derive(Debug, Clone, Default)]
+struct GameStateSpawnPiece {
+    frame_count: Frames,
+}
 
 impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateSpawnPiece {
     fn id(&self) -> GameStateId {
@@ -629,12 +631,29 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateSpawnPiece {
     }
     fn update(
         &mut self,
-        _data: &mut GameStateData<P>,
-        _config: &GameConfig<L>,
-        _input: Input,
+        data: &mut GameStateData<P>,
+        config: &GameConfig<L>,
+        input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
-        // TODO
-        Ok(None)
+        if self.frame_count == 0 {
+            if let Some(next) = data.next_pieces.pop_front() {
+                let fp = config.logic.spawn_piece(
+                    next,
+                    data.playfield.grid.num_cols(),
+                    data.playfield.grid.num_rows(),
+                    data.playfield.visible_rows,
+                );
+                data.falling_piece = Some(fp);
+            } else {
+                return Err("no next piece found".into());
+            };
+        }
+        self.frame_count += 1;
+        data.input_mgr.update(input.into_iter());
+        if self.frame_count < config.params.are {
+            return Ok(None);
+        }
+        Ok(Some(Box::new(GameStatePlay::default())))
     }
 }
 
@@ -699,219 +718,3 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
         }
     }
 }
-
-//---
-
-// #[derive(Debug, Copy, Clone, Default)]
-// pub struct Counter {
-//     pub move_left: Frames,
-//     pub move_right: Frames,
-//     pub gravity: Gravity,
-//     pub are: Frames,
-//     pub lock: Frames,
-//     pub hold: bool,
-//     pub line_clear: Frames,
-// }
-
-// impl Counter {
-//     pub fn rows_to_be_dropped(&self) -> usize {
-//         self.gravity as usize
-//     }
-// }
-
-// #[derive(Debug, Copy, Clone)]
-// pub enum State {
-//     Init,
-//     Play,
-//     LineClear,
-//     Are,
-//     SpawnPiece,
-//     GameOver,
-// }
-
-// #[derive(Debug, Clone)]
-// pub struct GameState<P: Piece> {
-//     pub playfield: Playfield<P>,
-//     pub falling_piece: Option<FallingPiece<P>>,
-//     pub hold_piece: Option<P>,
-//     pub counter: Counter,
-//     pub is_clearing_line: bool,
-//     pub is_game_over: bool,
-// }
-
-// pub fn update<P: Piece, Logic: GameLogic<P>>(
-//     logic: &Logic,
-//     params: &GameParams,
-//     state: &mut GameState<P>,
-//     input: Input,
-// ) {
-//     if state.is_game_over {
-//         return;
-//     }
-
-//     if input.contains(Input::MOVE_LEFT) {
-//         state.counter.move_left += 1;
-//     } else {
-//         state.counter.move_left = 0;
-//     }
-//     if input.contains(Input::MOVE_RIGHT) {
-//         state.counter.move_right += 1;
-//     } else {
-//         state.counter.move_right = 0;
-//     }
-
-//     if state.is_clearing_line {
-//         state.counter.line_clear += 1;
-//         if state.counter.line_clear > params.line_clear_delay {
-//             state.counter.line_clear = 0;
-//             state.is_clearing_line = false;
-//         }
-//         return;
-//     }
-
-//     if state.falling_piece.is_none() {
-//         // Wait for ARE.
-//         if state.counter.are <= params.are {
-//             state.counter.are += 1;
-//             return;
-//         }
-//         // ARE elapsed.
-//         state.counter.are = 0;
-//         // Spawn piece
-//         let fp = logic.spawn_piece(None, &state.playfield);
-//         let r =
-//             state
-//                 .playfield
-//                 .grid
-//                 .check_overlay(fp.x, fp.y, logic.piece_grid(fp.piece, fp.rotation));
-//         if !r.is_empty() {
-//             state.is_game_over = true;
-//         }
-//         state.falling_piece = Some(fp);
-//         return;
-//     }
-
-//     if let Some(falling_piece) = state.falling_piece.as_mut() {
-//         let piece_grid = logic.piece_grid(falling_piece.piece, falling_piece.rotation);
-
-//         // TODO: shift
-//         let is_shifted = true;
-
-//         let num_droppable_rows = {
-//             let (n, _r) = state.playfield.grid.check_overlay_toward(
-//                 falling_piece.x as i32,
-//                 falling_piece.y as i32,
-//                 piece_grid,
-//                 0,
-//                 -1,
-//             );
-//             assert_ne!(0, n);
-//             n - 1
-//         } as i32;
-//         if num_droppable_rows == 0 {
-//             state.counter.lock += 1;
-//         } else {
-//             state.counter.gravity += params.gravity;
-//         }
-
-//         let mut should_lock = false;
-
-//         if input.contains(Input::HARD_DROP) {
-//             should_lock = true;
-//         }
-
-//         if input.contains(Input::FIRM_DROP) {
-//             if num_droppable_rows > 0 {
-//                 falling_piece.y -= num_droppable_rows;
-//             }
-//         }
-
-//         let num_rows_to_be_dropped: i32;
-//         if input.contains(Input::SOFT_DROP) {
-//             state.counter.gravity += params.soft_drop_gravity;
-//             num_rows_to_be_dropped = state.counter.gravity as i32;
-//             should_lock = params.lock_delay_cancel && num_rows_to_be_dropped == 0;
-//         // if !should_lock {
-//         //     match params.lock_delay_reset {
-//         //         LockDelayReset::EntryReset => {}
-//         //         _ => state.counter.lock = 0,
-//         //     }
-//         // }
-//         } else {
-//             num_rows_to_be_dropped = state.counter.gravity as i32;
-//         }
-
-//         if num_rows_to_be_dropped > 0 {
-//             if num_droppable_rows < num_rows_to_be_dropped {
-//                 falling_piece.y -= num_droppable_rows;
-//                 state.counter.gravity = 0.0;
-//             } else {
-//                 falling_piece.y -= num_rows_to_be_dropped;
-//                 state.counter.gravity -= num_rows_to_be_dropped as f32;
-//             }
-//         }
-
-//         if should_lock {
-//             if params.loss_condition.contains(LossCondition::LOCK_OUT) {
-//                 let padding =
-//                     logic.piece_grid_bottom_padding(falling_piece.piece, falling_piece.rotation);
-//                 state.is_game_over =
-//                     falling_piece.y + padding as i32 >= state.playfield.visible_rows as i32;
-//             }
-//             if params
-//                 .loss_condition
-//                 .contains(LossCondition::PARTIAL_LOCK_OUT)
-//             {
-//                 let padding =
-//                     logic.piece_grid_top_padding(falling_piece.piece, falling_piece.rotation);
-//                 state.is_game_over = falling_piece.y + (piece_grid.num_rows() - padding) as i32
-//                     >= state.playfield.visible_rows as i32;
-//             }
-//             if !state.is_game_over {
-//                 let r = state.playfield.grid.overlay(
-//                     falling_piece.x as i32,
-//                     falling_piece.y as i32 - num_droppable_rows,
-//                     piece_grid,
-//                 );
-//                 assert!(r.is_empty());
-//                 state.falling_piece = None;
-//             }
-//             state.counter.gravity = 0.0;
-//             state.counter.lock = 0;
-//             state.counter.hold = false;
-//             state.is_clearing_line = true;
-//             return;
-//         }
-
-//         if state.counter.hold && input.contains(Input::HOLD) {
-//             if let Some(p) = state.hold_piece {
-//                 let fp = logic.spawn_piece(Some(p), &state.playfield);
-//                 let r = state.playfield.grid.check_overlay(
-//                     fp.x,
-//                     fp.y,
-//                     logic.piece_grid(fp.piece, fp.rotation),
-//                 );
-//                 if !r.is_empty() {
-//                     state.is_game_over = true;
-//                 }
-//                 state.falling_piece = Some(fp);
-//             }
-//             state.counter.gravity = 0.0;
-//             state.counter.lock = 0;
-//             state.counter.hold = true;
-//             return;
-//         }
-
-//         if input.contains(Input::ROTATE_CW | Input::ROTATE_CCW) {
-//             let rotated = logic.rotate(
-//                 input.contains(Input::ROTATE_CW),
-//                 falling_piece,
-//                 &state.playfield,
-//             );
-//             if let Some(fp) = rotated {
-//                 state.falling_piece = Some(fp);
-//             }
-//             return;
-//         }
-//     }
-// }
