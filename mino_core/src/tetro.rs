@@ -208,11 +208,12 @@ impl GameLogic<Piece> for WorldRuleLogic {
         num_visible_rows: usize,
     ) -> FallingPiece<Piece> {
         let pg = piece.grid(Rotation::default());
+        let top_pad = piece.grid_top_padding(Rotation::default());
+        println!("{}", top_pad);
         FallingPiece {
             piece: piece,
             x: ((num_cols - pg.num_cols()) as i32) / 2,
-            // FIXME
-            y: (num_visible_rows as i32) - 1 - (pg.num_rows() / 2) as i32,
+            y: (num_visible_rows as i32) - (pg.num_rows() - top_pad) as i32,
             rotation: Rotation::default(),
         }
     }

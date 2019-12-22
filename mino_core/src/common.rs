@@ -38,14 +38,10 @@ impl Default for Rotation {
 pub trait Piece: Copy {
     fn grid(&self, rotation: Rotation) -> &PieceGrid<Self>;
     fn grid_top_padding(&self, rotation: Rotation) -> usize {
-        let (n, ok) = self.grid(rotation).top_padding();
-        assert!(ok);
-        n
+        self.grid(rotation).top_padding()
     }
     fn grid_bottom_padding(&self, rotation: Rotation) -> usize {
-        let (n, ok) = self.grid(rotation).bottom_padding();
-        assert!(ok);
-        n
+        self.grid(rotation).bottom_padding()
     }
 }
 

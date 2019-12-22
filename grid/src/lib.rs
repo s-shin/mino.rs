@@ -285,26 +285,28 @@ where
         (n, r)
     }
 
-    pub fn bottom_padding(&self) -> (usize, bool) {
-        for y in 0..self.num_rows {
+    pub fn bottom_padding(&self) -> usize {
+        for n in 0..self.num_rows {
+            let y = n;
             for x in 0..self.num_cols {
                 if !self.cell(x, y).is_empty() {
-                    return (y, true);
+                    return n;
                 }
             }
         }
-        (0, false)
+        self.num_rows()
     }
 
-    pub fn top_padding(&self) -> (usize, bool) {
-        for y in (0..self.num_rows).rev() {
+    pub fn top_padding(&self) -> usize {
+        for n in 0..self.num_rows {
+            let y = self.num_rows - n - 1;
             for x in 0..self.num_cols {
                 if !self.cell(x, y).is_empty() {
-                    return (y, true);
+                    return n;
                 }
             }
         }
-        (0, false)
+        self.num_rows()
     }
 }
 
@@ -447,6 +449,28 @@ mod tests {
         assert!(r.is_empty());
         assert_eq!(1, grid.cell(0, 1));
         assert_eq!(1, grid.cell(1, 2));
+    }
+
+    #[test]
+    fn padding_test() {
+        let mut grid = MyGrid::new(
+            2,
+            5,
+            vec![
+                0, 0, //
+                1, 0, //
+                0, 1, //
+                0, 0, //
+                0, 0, //
+            ],
+        );
+        grid.reverse_rows();
+        assert_eq!(1, grid.top_padding());
+        assert_eq!(2, grid.bottom_padding());
+
+        let grid = MyGrid::new(1, 2, vec![]);
+        assert_eq!(2, grid.top_padding());
+        assert_eq!(2, grid.bottom_padding());
     }
 
     #[test]
