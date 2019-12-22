@@ -1,4 +1,4 @@
-use super::common::{FallingPiece, Game, GameLogic, GameParams, GameState, Playfield, Rotation};
+use super::common::{FallingPiece, GameLogic, Piece as PieceTrait, Playfield, Rotation};
 use lazy_static::lazy_static;
 use std::fmt;
 
@@ -13,27 +13,22 @@ pub enum Piece {
     L,
 }
 
-impl super::common::Piece for Piece {
-    type Piece = Piece;
-    fn grid(&self, rotation: Rotation) -> grid::Grid<Cell<Self::Piece>> {
-        //
-    }
-}
-
 impl fmt::Display for Piece {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self)
     }
 }
 
-pub type Cell = super::common::Cell<Piece>;
-pub type Grid = grid::Grid<Cell>;
+pub type PieceGrid = super::common::PieceGrid<Piece>;
 
 pub struct PieceDefinition {
-    grids: Vec<Grid>,
+    grids: Vec<PieceGrid>,
 }
 
 fn gen_piece_definitions() -> Vec<PieceDefinition> {
+    use grid::Grid;
+    type Cell = super::common::Cell<Piece>;
+
     let e = Cell::Empty;
     let i = Cell::Block(Piece::I);
     let t = Cell::Block(Piece::T);
@@ -193,28 +188,31 @@ lazy_static! {
     pub static ref PIECE_DEFINITIONS: Vec<PieceDefinition> = gen_piece_definitions();
 }
 
+impl PieceTrait for Piece {
+    fn grid(&self, rotation: Rotation) -> &PieceGrid {
+        &PIECE_DEFINITIONS[*self as usize].grids[rotation as usize]
+    }
+}
+
+//---
+
+#[derive(Debug)]
 pub struct WorldRuleLogic {}
 
 impl GameLogic<Piece> for WorldRuleLogic {
-    fn piece_grid(&self, piece: Piece, rotation: Rotation) -> &Grid {
-        &PIECE_DEFINITIONS[piece as usize].grids[rotation as usize]
-    }
     fn spawn_piece(
         &self,
-        piece: Option<Piece>,
-        playfield: &Playfield<Piece>,
+        piece: Piece,
+        num_cols: usize,
+        _num_rows: usize,
+        num_visible_rows: usize,
     ) -> FallingPiece<Piece> {
-        let p = if let Some(pp) = piece {
-            pp
-        } else {
-            Piece::I // TODO
-        };
+        let pg = piece.grid(Rotation::default());
         FallingPiece {
-            piece: p,
-            x: ((playfield.grid.num_cols() - self.piece_grid(p, Rotation::default()).num_cols())
-                as i32)
-                / 2,
-            y: (playfield.visible_rows as i32) - 1,
+            piece: piece,
+            x: ((num_cols - pg.num_cols()) as i32) / 2,
+            // FIXME
+            y: (num_visible_rows as i32) - 1 - (pg.num_rows() / 2) as i32,
             rotation: Rotation::default(),
         }
     }

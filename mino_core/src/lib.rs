@@ -3,6 +3,5 @@ extern crate bitflags;
 extern crate grid;
 extern crate input_counter;
 
-// pub mod common;
 pub mod common;
-// pub mod tetro;
+pub mod tetro;

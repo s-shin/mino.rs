@@ -36,7 +36,7 @@ impl Default for Rotation {
 }
 
 pub trait Piece: Copy {
-    fn grid(&self, rotation: Rotation) -> PieceGrid<Self>;
+    fn grid(&self, rotation: Rotation) -> &PieceGrid<Self>;
     fn grid_top_padding(&self, rotation: Rotation) -> usize {
         let (n, ok) = self.grid(rotation).top_padding();
         assert!(ok);
@@ -49,7 +49,7 @@ pub trait Piece: Copy {
     }
 }
 
-type PieceGrid<P> = grid::Grid<Cell<P>>;
+pub type PieceGrid<P> = grid::Grid<Cell<P>>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Cell<P: Piece> {
@@ -92,33 +92,33 @@ pub struct FallingPiece<P: Piece> {
 }
 
 impl<P: Piece> FallingPiece<P> {
-    fn grid(&self) -> PieceGrid<P> {
+    pub fn grid(&self) -> &PieceGrid<P> {
         self.piece.grid(self.rotation)
     }
-    fn grid_top_padding(&self) -> usize {
+    pub fn grid_top_padding(&self) -> usize {
         self.piece.grid_top_padding(self.rotation)
     }
-    fn grid_bottom_padding(&self) -> usize {
+    pub fn grid_bottom_padding(&self) -> usize {
         self.piece.grid_bottom_padding(self.rotation)
     }
-    fn is_lock_out(&self, playfield: &Playfield<P>) -> bool {
+    pub fn is_lock_out(&self, playfield: &Playfield<P>) -> bool {
         let padding = self.grid_bottom_padding();
         self.y + padding as i32 >= playfield.visible_rows as i32
     }
-    fn is_partial_lock_out(&self, playfield: &Playfield<P>) -> bool {
+    pub fn is_partial_lock_out(&self, playfield: &Playfield<P>) -> bool {
         let padding = self.grid_top_padding();
         self.y + (self.grid().num_rows() - padding) as i32 >= playfield.visible_rows as i32
     }
-    fn can_put_onto(&self, playfield: &Playfield<P>) -> bool {
+    pub fn can_put_onto(&self, playfield: &Playfield<P>) -> bool {
         playfield
             .grid
             .check_overlay(self.x, self.y, &self.grid())
             .is_empty()
     }
-    fn put_onto(&self, playfield: &mut Playfield<P>) -> grid::OverlayResult {
+    pub fn put_onto(&self, playfield: &mut Playfield<P>) -> grid::OverlayResult {
         playfield.grid.overlay(self.x, self.y, &self.grid())
     }
-    fn droppable_rows(&self, playfield: &Playfield<P>) -> usize {
+    pub fn droppable_rows(&self, playfield: &Playfield<P>) -> usize {
         let (n, _r) =
             playfield
                 .grid
@@ -194,6 +194,7 @@ impl fmt::Display for LossCondition {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct GameParams {
     pub gravity: Gravity,
     pub soft_drop_gravity: Gravity,
@@ -229,7 +230,8 @@ impl Default for GameParams {
     }
 }
 
-pub trait GameLogic<P: Piece> {
+pub trait GameLogic<P: Piece>: fmt::Debug {
+    /// Create new falling piece at initial position.
     fn spawn_piece(
         &self,
         piece: P,
@@ -237,6 +239,8 @@ pub trait GameLogic<P: Piece> {
         num_rows: usize,
         num_visible_rows: usize,
     ) -> FallingPiece<P>;
+    /// Rotate `falling_piece` on `playfield` by `cw`.
+    /// If not rotatable, return None.
     fn rotate(
         &self,
         cw: bool,
@@ -328,6 +332,7 @@ pub fn new_input_manager(das: Frames, arr: Frames) -> InputManager<Input, Frames
     mgr
 }
 
+#[derive(Debug, Clone)]
 pub struct GameConfig<Logic> {
     pub logic: Logic,
     pub params: GameParams,
@@ -353,11 +358,8 @@ pub enum GameStateId {
     Error,
 }
 
-pub trait GameState<P: Piece, L> {
+pub trait GameState<P: Piece, L>: fmt::Debug {
     fn id(&self) -> GameStateId;
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "")
-    }
     fn enter(
         &mut self,
         _data: &mut GameStateData<P>,
@@ -376,12 +378,7 @@ pub trait GameState<P: Piece, L> {
     // fn exit(&mut self, _data: &mut GameStateData<P>, _config: &GameConfig<L>) {}
 }
 
-impl<P: Piece, L> fmt::Display for dyn GameState<P, L> {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        self.fmt(formatter)
-    }
-}
-
+#[derive(Debug, Clone)]
 struct GameStateError {
     reason: String,
 }
@@ -390,11 +387,9 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateError {
     fn id(&self) -> GameStateId {
         GameStateId::Error
     }
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "{}", self.reason)
-    }
 }
 
+#[derive(Debug, Copy, Clone)]
 struct GameStateInit;
 
 impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateInit {
@@ -415,7 +410,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateInit {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default)]
 struct GameStatePlay {
     gravity_counter: Gravity,
     lock_delay_counter: Frames,
@@ -541,7 +536,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default)]
 struct GameStateLock;
 
 impl GameStateLock {
@@ -591,7 +586,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLock {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default)]
 struct GameStateLineClear {
     frame_count: Frames,
 }
@@ -620,7 +615,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLineClear {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default)]
 struct GameStateSpawnPiece {
     frame_count: Frames,
 }
@@ -657,7 +652,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateSpawnPiece {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Copy, Clone, Default)]
 struct GameStateGameOver {
     loss_cond: LossCondition,
 }
@@ -672,13 +667,11 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateGameOver {
     fn id(&self) -> GameStateId {
         GameStateId::GameOver
     }
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "loss by {}", self.loss_cond)
-    }
 }
 
 //---
 
+#[derive(Debug)]
 pub struct Game<P: Piece, L> {
     pub config: GameConfig<L>,
     pub data: GameStateData<P>,
