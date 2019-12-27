@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 rand = "0.7"
+clap = "2.31.2"
+cursive = "0.13"

@@ -35,6 +35,8 @@ impl Default for Rotation {
     }
 }
 
+//--- Piece, FallingPiece, Playfield
+
 pub trait Piece: Copy {
     fn grid(&self, rotation: Rotation) -> &PieceGrid<Self>;
     fn grid_top_padding(&self, rotation: Rotation) -> usize {
@@ -119,7 +121,7 @@ impl<P: Piece> FallingPiece<P> {
             playfield
                 .grid
                 .check_overlay_toward(self.x as i32, self.y as i32, &self.grid(), 0, -1);
-        n
+        n - 1
     }
 }
 
@@ -128,6 +130,8 @@ pub struct Playfield<P: Piece> {
     pub visible_rows: usize,
     pub grid: grid::Grid<Cell<P>>,
 }
+
+//--- GameParams, GameLogic, GameConfig
 
 /// G = cells / frame
 pub type Gravity = f32;
@@ -245,6 +249,14 @@ pub trait GameLogic<P: Piece>: fmt::Debug {
     ) -> Option<FallingPiece<P>>;
 }
 
+#[derive(Debug, Clone)]
+pub struct GameConfig<Logic> {
+    pub logic: Logic,
+    pub params: GameParams,
+}
+
+//--- Input
+
 bitflags! {
     #[derive(Default)]
     pub struct Input: u32 {
@@ -328,11 +340,14 @@ pub fn new_input_manager(das: Frames, arr: Frames) -> InputManager<Input, Frames
     mgr
 }
 
-#[derive(Debug, Clone)]
-pub struct GameConfig<Logic> {
-    pub logic: Logic,
-    pub params: GameParams,
-}
+//--- GameEvent
+
+// enum GameEvent {
+//     OnEnterState(GameStateId),
+//     OnExitState(GameStateId),
+// }
+
+//--- GameState
 
 #[derive(Debug, Clone)]
 pub struct GameStateData<P: Piece> {
@@ -343,7 +358,7 @@ pub struct GameStateData<P: Piece> {
     pub input_mgr: InputManager<Input, Frames>,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum GameStateId {
     Init,
     Play,
@@ -665,7 +680,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateGameOver {
     }
 }
 
-//---
+//--- Game
 
 #[derive(Debug)]
 pub struct Game<P: Piece, L> {
@@ -683,7 +698,7 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
         }
     }
 
-    pub fn current_state(&self) -> GameStateId {
+    pub fn current_state_id(&self) -> GameStateId {
         self.state.id()
     }
 
@@ -694,8 +709,8 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
 
     fn handle_result(&mut self, result: Result<Option<Box<dyn GameState<P, L>>>, String>) {
         match result {
-            Ok(next) => {
-                if let Some(next) = next {
+            Ok(maybe_next) => {
+                if let Some(next) = maybe_next {
                     self.state = next;
                     let r = self.state.enter(&mut self.data, &self.config);
                     self.handle_result(r);

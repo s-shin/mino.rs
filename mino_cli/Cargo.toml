@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 mino_core = { path = "../mino_core" }
 grid = { path = "../grid" }
+cursive = "0.13"
