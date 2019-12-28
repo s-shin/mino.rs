@@ -1,4 +1,4 @@
-use input_counter::{InputCounter, InputManager};
+use input_counter::{Contains, InputCounter, InputManager};
 use std::collections::VecDeque;
 use std::fmt;
 use std::hash::Hash;
@@ -309,10 +309,11 @@ impl Iterator for InputIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.next_idx < INPUTS.len() {
-            if self.input.contains(INPUTS[self.next_idx]) {
-                return Some(INPUTS[self.next_idx]);
-            }
+            let idx = self.next_idx;
             self.next_idx += 1;
+            if self.input.contains(INPUTS[idx]) {
+                return Some(INPUTS[idx]);
+            }
         }
         None
     }
@@ -324,6 +325,12 @@ impl IntoIterator for Input {
 
     fn into_iter(self) -> Self::IntoIter {
         InputIterator::new(self)
+    }
+}
+
+impl Contains<Input> for Input {
+    fn contains(&self, input: Input) -> bool {
+        Input::contains(self, input)
     }
 }
 
@@ -449,7 +456,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
         input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         let input_mgr = &mut data.input_mgr;
-        input_mgr.update(input.into_iter());
+        input_mgr.update(input);
         let fp = data.falling_piece.as_mut().unwrap();
         let playfield = &data.playfield;
         let num_droppable_rows = fp.droppable_rows(playfield);
@@ -517,7 +524,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
         };
         if dx != 0 {
             let mut t = moved;
-            t.x -= dx;
+            t.x += dx;
             if t.can_put_onto(playfield) {
                 moved = t;
             }
@@ -655,8 +662,8 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateSpawnPiece {
             };
         }
         self.frame_count += 1;
-        data.input_mgr.update(input.into_iter());
-        if self.frame_count < config.params.are {
+        data.input_mgr.update(input);
+        if self.frame_count <= config.params.are {
             return Ok(None);
         }
         Ok(Some(Box::new(GameStatePlay::default())))

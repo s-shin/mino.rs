@@ -88,12 +88,16 @@ impl<Num: NumAssign + Copy> InputCounter<Num> {
     }
 }
 
+pub trait Contains<T> {
+    fn contains(&self, v: T) -> bool;
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct InputManager<Input: Eq + Hash, Num> {
     inputs: HashMap<Input, InputCounter<Num>>,
 }
 
-impl<Input: Eq + Hash, Num: NumAssign + Copy> InputManager<Input, Num> {
+impl<Input: Eq + Hash + Clone, Num: NumAssign + Copy> InputManager<Input, Num> {
     pub fn register(
         &mut self,
         input: Input,
@@ -101,11 +105,9 @@ impl<Input: Eq + Hash, Num: NumAssign + Copy> InputManager<Input, Num> {
     ) -> Option<InputCounter<Num>> {
         self.inputs.insert(input, counter)
     }
-    pub fn update<Iter: Iterator<Item = Input>>(&mut self, inputs: Iter) {
-        for i in inputs {
-            if let Some(c) = self.inputs.get_mut(&i) {
-                c.update(true);
-            }
+    pub fn update(&mut self, inputs: impl Contains<Input>) {
+        for (i, c) in &mut self.inputs {
+            c.update(inputs.contains(i.clone()));
         }
     }
     pub fn can_handle(&self, input: Input) -> bool {
