@@ -1,5 +1,6 @@
 extern crate grid;
 extern crate mino_core;
+extern crate rand;
 extern crate termion;
 extern crate tui;
 use grid::IsEmpty;
@@ -8,6 +9,7 @@ use mino_core::common::{
     Playfield,
 };
 use mino_core::tetro::{Piece, PieceGrid, WorldRuleLogic};
+use rand::seq::SliceRandom;
 use std::collections::VecDeque;
 use std::io;
 use std::io::Read;
@@ -63,6 +65,13 @@ impl ViewData {
     }
 }
 
+fn generate_pieces() -> VecDeque<Piece> {
+    let mut rng = rand::thread_rng();
+    let mut ps = Piece::slice().clone();
+    ps.shuffle(&mut rng);
+    ps.to_vec().into()
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     const FRAME_TIME: time::Duration = time::Duration::from_micros(16666);
 
@@ -84,15 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             falling_piece: Option::None,
             hold_piece: Option::None,
-            next_pieces: VecDeque::from(vec![
-                Piece::J,
-                Piece::O,
-                Piece::I,
-                Piece::L,
-                Piece::T,
-                Piece::S,
-                Piece::Z,
-            ]),
+            next_pieces: generate_pieces(),
             input_mgr: new_input_manager(config.params.das, config.params.arr),
         };
         Game::new(config, data)
@@ -106,6 +107,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for frame in 0..6000 {
         let frame_started_at = time::Instant::now();
+
+        if game.data.next_pieces.len() <= Piece::num() {
+            let mut ps = generate_pieces();
+            game.data.next_pieces.append(&mut ps);
+        }
 
         let mut input = Input::default();
         if let Some(Ok(item)) = stdin.next() {

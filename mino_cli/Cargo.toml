@@ -11,3 +11,4 @@ mino_core = { path = "../mino_core" }
 grid = { path = "../grid" }
 tui = "0.8"
 termion = "1.5"
+rand = "0.7"

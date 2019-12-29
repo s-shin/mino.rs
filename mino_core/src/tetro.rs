@@ -13,6 +13,24 @@ pub enum Piece {
     L,
 }
 
+impl Piece {
+    pub fn num() -> usize {
+        7
+    }
+    pub fn slice() -> &'static [Piece; 7] {
+        static PIECES: [Piece; 7] = [
+            Piece::I,
+            Piece::T,
+            Piece::O,
+            Piece::S,
+            Piece::Z,
+            Piece::J,
+            Piece::L,
+        ];
+        &PIECES
+    }
+}
+
 impl fmt::Display for Piece {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self)
