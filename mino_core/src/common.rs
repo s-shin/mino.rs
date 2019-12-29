@@ -53,13 +53,14 @@ pub type PieceGrid<P> = grid::Grid<Cell<P>>;
 pub enum Cell<P: Piece> {
     Empty,
     Block(P),
+    Ghost(P),
     Garbage,
 }
 
 impl<P: Piece> grid::IsEmpty for Cell<P> {
     fn is_empty(&self) -> bool {
         match self {
-            Cell::Empty => true,
+            Cell::Empty | Cell::Ghost(_) => true,
             _ => false,
         }
     }
@@ -74,7 +75,7 @@ impl<P: Piece> Default for Cell<P> {
 impl<P: Piece + fmt::Display> fmt::Display for Cell<P> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Cell::Empty => write!(formatter, " "),
+            Cell::Empty | Cell::Ghost(_) => write!(formatter, " "),
             Cell::Block(p) => write!(formatter, "{}", p),
             Cell::Garbage => write!(formatter, "x"),
         }
@@ -121,7 +122,11 @@ impl<P: Piece> FallingPiece<P> {
             playfield
                 .grid
                 .check_overlay_toward(self.x as i32, self.y as i32, &self.grid(), 0, -1);
-        n - 1
+        if n == 0 {
+            0
+        } else {
+            n - 1
+        }
     }
 }
 

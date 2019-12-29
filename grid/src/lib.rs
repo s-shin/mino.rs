@@ -63,6 +63,10 @@ where
         self.num_cols
     }
 
+    pub fn is_valid_cell_index(&self, x: usize, y: usize) -> bool {
+        x < self.num_cols && y < self.num_rows
+    }
+
     pub fn cell_index(&self, x: usize, y: usize) -> usize {
         assert!(x < self.num_cols);
         assert!(y < self.num_rows);
@@ -141,6 +145,14 @@ where
             self.set_cell(x, dst_y, self.cell(x, src_y));
             if let Some(cell) = placeholder.as_ref() {
                 self.set_cell(x, src_y, cell.clone());
+            }
+        }
+    }
+
+    pub fn map(&mut self, cb: fn(C) -> C) {
+        for y in 0..self.num_rows {
+            for x in 0..self.num_cols {
+                self.set_cell(x, y, cb(self.cell(x, y)));
             }
         }
     }

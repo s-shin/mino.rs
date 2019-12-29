@@ -3,8 +3,10 @@ extern crate mino_core;
 extern crate termion;
 extern crate tokio;
 extern crate tui;
+use grid::IsEmpty;
 use mino_core::common::{
-    new_input_manager, Game, GameConfig, GameParams, GameStateData, Input, Playfield,
+    new_input_manager, Cell, FallingPiece, Game, GameConfig, GameParams, GameStateData, Input,
+    Playfield,
 };
 use mino_core::tetro::{Piece, PieceGrid, WorldRuleLogic};
 use std::collections::VecDeque;
@@ -18,12 +20,55 @@ use tui::style::{Color, Style};
 use tui::widgets::{Block, Paragraph, Text, Widget};
 use tui::Terminal;
 
+struct ViewData {
+    ghost_piece: Option<FallingPiece<Piece>>,
+}
+
+impl ViewData {
+    fn new(data: &GameStateData<Piece>) -> Self {
+        Self {
+            ghost_piece: if let Some(fp) = data.falling_piece {
+                let n = fp.droppable_rows(&data.playfield);
+                let mut gp = fp.clone();
+                gp.y -= n as i32;
+                Some(gp)
+            } else {
+                None
+            },
+        }
+    }
+
+    fn get_cell(&self, data: &GameStateData<Piece>, x: usize, y: usize) -> Cell<Piece> {
+        let pf = &data.playfield;
+        if let Some(fp) = data.falling_piece {
+            let x = x as i32 - fp.x;
+            let y = y as i32 - fp.y;
+            if fp.grid().is_valid_cell_index(x as usize, y as usize) {
+                let c = fp.grid().cell(x as usize, y as usize);
+                if !c.is_empty() {
+                    return c;
+                }
+            }
+        }
+        if let Some(gp) = self.ghost_piece {
+            let x = x as i32 - gp.x;
+            let y = y as i32 - gp.y;
+            if gp.grid().is_valid_cell_index(x as usize, y as usize) {
+                if let Cell::Block(p) = gp.grid().cell(x as usize, y as usize) {
+                    return Cell::Ghost(p);
+                }
+            }
+        }
+        pf.grid.cell(x, y)
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut game = {
         let config = GameConfig {
             params: GameParams {
-                gravity: 0.2,
+                gravity: 0.0167,
                 are: 0,
                 line_clear_delay: 0,
                 ..GameParams::default()
@@ -79,11 +124,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         game.update(input);
 
-        let mut pf = game.data.playfield.clone();
-        if let Some(fp) = game.data.falling_piece {
-            fp.put_onto(&mut pf);
-        }
-
         terminal.draw(|mut f| {
             let size = f.size();
             Block::default()
@@ -93,11 +133,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Length(10), Constraint::Percentage(90)].as_ref())
                 .split(size);
+            let pf = &game.data.playfield;
+            let vd = ViewData::new(&game.data);
             for y in 0..pf.visible_rows {
                 for x in 0..pf.grid.num_cols() {
                     let rect = Rect::new(x as u16, (pf.visible_rows - y) as u16, 1, 1);
-                    let s = format!("{}", pf.grid.cell(x, y));
-                    let text = [Text::styled(&s, Style::default().fg(Color::Yellow))];
+                    let t = match vd.get_cell(&game.data, x, y) {
+                        Cell::Block(p) => (
+                            format!("{}", p),
+                            match p {
+                                Piece::I => Color::Cyan,
+                                Piece::O => Color::Yellow,
+                                Piece::T => Color::Magenta,
+                                Piece::J => Color::Blue,
+                                Piece::L => Color::LightRed,
+                                Piece::S => Color::Green,
+                                Piece::Z => Color::Red,
+                            },
+                        ),
+                        Cell::Ghost(p) => (format!("{}", p), Color::DarkGray),
+                        _ => (" ".into(), Color::Black),
+                    };
+                    let text = [Text::styled(&t.0, Style::default().fg(t.1))];
                     Paragraph::new(text.iter()).render(&mut f, rect);
                 }
             }
