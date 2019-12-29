@@ -13,7 +13,7 @@ pub enum Rotation {
 
 impl Rotation {
     pub fn rotate_cw(&self, n: i8) -> Rotation {
-        match ((*self as i16) + (n as i16)) % 4 {
+        match ((*self as i16) + (n as i16) + 4) % 4 {
             0 => Rotation::Cw0,
             1 => Rotation::Cw90,
             2 => Rotation::Cw180,

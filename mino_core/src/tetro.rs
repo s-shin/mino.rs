@@ -39,13 +39,14 @@ fn gen_piece_definitions() -> Vec<PieceDefinition> {
     let l = Cell::Block(Piece::L);
 
     let mut grid_i = Grid::new(
-        4,
-        4,
+        5,
+        5,
         vec![
-            e, e, e, e, //
-            i, i, i, i, //
-            e, e, e, e, //
-            e, e, e, e, //
+            e, e, e, e, e, //
+            e, e, e, e, e, //
+            e, i, i, i, i, //
+            e, e, e, e, e, //
+            e, e, e, e, e, //
         ],
     );
     grid_i.reverse_rows();
@@ -62,13 +63,12 @@ fn gen_piece_definitions() -> Vec<PieceDefinition> {
     grid_t.reverse_rows();
 
     let mut grid_o = Grid::new(
-        4,
-        4,
+        3,
+        3,
         vec![
-            e, e, e, e, //
-            e, o, o, e, //
-            e, o, o, e, //
-            e, e, e, e, //
+            e, o, o, //
+            e, o, o, //
+            e, e, e, //
         ],
     );
     grid_o.reverse_rows();
@@ -185,7 +185,21 @@ fn gen_piece_definitions() -> Vec<PieceDefinition> {
 }
 
 lazy_static! {
-    pub static ref PIECE_DEFINITIONS: Vec<PieceDefinition> = gen_piece_definitions();
+    static ref PIECE_DEFINITIONS: Vec<PieceDefinition> = gen_piece_definitions();
+    static ref OFFSET_DATA_I: [Vec<(i32, i32)>; 4] = [
+        vec![(0, 0), (-1, 0), (2, 0), (-1, 0), (2, 0)],
+        vec![(-1, 0), (0, 0), (0, 0), (0, 1), (0, -2)],
+        vec![(-1, 1), (1, 1), (-2, 1), (1, 0), (-2, 0)],
+        vec![(0, 1), (0, 1), (0, 1), (0, -1), (0, 2)],
+    ];
+    static ref OFFSET_DATA_O: [Vec<(i32, i32)>; 4] =
+        [vec![(0, 0)], vec![(0, -1)], vec![(-1, -1)], vec![(-1, 0)]];
+    static ref OFFSET_DATA_JLSTZ: [Vec<(i32, i32)>; 4] = [
+        vec![(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)],
+        vec![(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
+        vec![(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)],
+        vec![(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)],
+    ];
 }
 
 impl PieceTrait for Piece {
@@ -207,22 +221,43 @@ impl GameLogic<Piece> for WorldRuleLogic {
         _num_rows: usize,
         num_visible_rows: usize,
     ) -> FallingPiece<Piece> {
-        let pg = piece.grid(Rotation::default());
+        let g = piece.grid(Rotation::default());
         let top_pad = piece.grid_top_padding(Rotation::default());
         FallingPiece {
             piece: piece,
-            x: ((num_cols - pg.num_cols()) as i32) / 2,
-            y: (num_visible_rows as i32) - (pg.num_rows() - top_pad) as i32,
+            x: ((num_cols - g.num_cols()) as i32) / 2,
+            y: (num_visible_rows as i32) - (g.num_rows() - top_pad) as i32,
             rotation: Rotation::default(),
         }
     }
+    /// Reference: https://harddrop.com/wiki/SRS#How_Guideline_SRS_Really_Works
     fn rotate(
         &self,
-        _cw: bool,
+        cw: bool,
         falling_piece: &FallingPiece<Piece>,
-        _playfield: &Playfield<Piece>,
+        playfield: &Playfield<Piece>,
     ) -> Option<FallingPiece<Piece>> {
-        // TODO
-        Option::Some(*falling_piece)
+        let mut fp = falling_piece.clone();
+        fp.rotation = if cw {
+            fp.rotation.cw()
+        } else {
+            fp.rotation.ccw()
+        };
+        let offset_data = &match fp.piece {
+            Piece::I => &*OFFSET_DATA_I,
+            Piece::O => &*OFFSET_DATA_O,
+            _ => &*OFFSET_DATA_JLSTZ,
+        };
+        let offsets1 = &offset_data[falling_piece.rotation as usize];
+        let offsets2 = &offset_data[fp.rotation as usize];
+        for i in 0..offsets1.len() {
+            let mut fp = fp.clone();
+            fp.x += offsets1[i].0 - offsets2[i].0;
+            fp.y += offsets1[i].1 - offsets2[i].1;
+            if fp.can_put_onto(playfield) {
+                return Some(fp);
+            }
+        }
+        None
     }
 }

@@ -69,7 +69,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut game = {
         let config = GameConfig {
             params: GameParams {
-                gravity: 0.0167,
+                // gravity: 0.0167,
+                gravity: 0.0,
                 are: 0,
                 line_clear_delay: 0,
                 ..GameParams::default()
@@ -112,8 +113,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match ev {
                     Event::Key(key) => match key {
                         Key::Char('q') => break,
-                        Key::Char('z') => input |= Input::ROTATE_CW,
-                        Key::Char('x') => input |= Input::ROTATE_CCW,
+                        Key::Char('z') => input |= Input::ROTATE_CCW,
+                        Key::Char('x') => input |= Input::ROTATE_CW,
                         Key::Right => input |= Input::MOVE_RIGHT,
                         Key::Left => input |= Input::MOVE_LEFT,
                         Key::Up => input |= Input::HARD_DROP,
