@@ -141,6 +141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Key::Char('z') => input |= Input::ROTATE_CCW,
                         Key::Char('x') => input |= Input::ROTATE_CW,
                         Key::Char(' ') => input |= Input::HOLD,
+                        Key::Char('s') => input |= Input::FIRM_DROP,
                         Key::Right => input |= Input::MOVE_RIGHT,
                         Key::Left => input |= Input::MOVE_LEFT,
                         Key::Up => input |= Input::HARD_DROP,
