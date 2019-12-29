@@ -1,7 +1,6 @@
 extern crate grid;
 extern crate mino_core;
 extern crate termion;
-extern crate tokio;
 extern crate tui;
 use grid::IsEmpty;
 use mino_core::common::{
@@ -12,6 +11,7 @@ use mino_core::tetro::{Piece, PieceGrid, WorldRuleLogic};
 use std::collections::VecDeque;
 use std::io;
 use std::io::Read;
+use std::time;
 use termion::event::{Event, Key};
 use termion::raw::IntoRawMode;
 use tui::backend::TermionBackend;
@@ -63,8 +63,9 @@ impl ViewData {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    const FRAME_TIME: time::Duration = time::Duration::from_micros(16666);
+
     let mut game = {
         let config = GameConfig {
             params: GameParams {
@@ -101,15 +102,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
     terminal.hide_cursor()?;
     let mut stdin = termion::async_stdin().bytes();
-    let mut interval = tokio::time::interval(std::time::Duration::from_millis(16));
 
     for frame in 0..6000 {
+        let frame_started_at = time::Instant::now();
+
         let mut input = Input::default();
         if let Some(Ok(item)) = stdin.next() {
             if let Ok(ev) = termion::event::parse_event(item, &mut stdin) {
                 match ev {
                     Event::Key(key) => match key {
                         Key::Char('q') => break,
+                        Key::Char('z') => input |= Input::ROTATE_CW,
+                        Key::Char('x') => input |= Input::ROTATE_CCW,
                         Key::Right => input |= Input::MOVE_RIGHT,
                         Key::Left => input |= Input::MOVE_LEFT,
                         Key::Up => input |= Input::HARD_DROP,
@@ -167,7 +171,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         })?;
 
-        interval.tick().await;
+        let dt = time::Instant::now() - frame_started_at;
+        if dt < FRAME_TIME {
+            std::thread::sleep(FRAME_TIME - dt);
+        }
     }
 
     Ok(())
