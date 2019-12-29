@@ -160,25 +160,25 @@ impl Default for LockDelayReset {
 
 bitflags! {
     /// http://harddrop.com/wiki/Top_out
-    pub struct LossCondition: u32 {
+    pub struct TopOutCondition: u32 {
         const LOCK_OUT = 0b00000001;
         const PARTIAL_LOCK_OUT = 0b00000010;
         const GARBAGE_OUT = 0b00000100;
     }
 }
 
-impl LossCondition {
+impl TopOutCondition {
     fn check<P: Piece>(
         self,
         falling_piece: &FallingPiece<P>,
         playfield: &Playfield<P>,
-    ) -> LossCondition {
-        if self.contains(LossCondition::LOCK_OUT) {
+    ) -> TopOutCondition {
+        if self.contains(TopOutCondition::LOCK_OUT) {
             if falling_piece.is_lock_out(playfield) {
                 return self;
             }
         }
-        if self.contains(LossCondition::PARTIAL_LOCK_OUT) {
+        if self.contains(TopOutCondition::PARTIAL_LOCK_OUT) {
             if falling_piece.is_partial_lock_out(playfield) {
                 return self;
             }
@@ -187,15 +187,38 @@ impl LossCondition {
     }
 }
 
-impl Default for LossCondition {
+impl Default for TopOutCondition {
     fn default() -> Self {
-        LossCondition::LOCK_OUT | LossCondition::GARBAGE_OUT
+        TopOutCondition::LOCK_OUT | TopOutCondition::GARBAGE_OUT
     }
 }
 
-impl fmt::Display for LossCondition {
+impl fmt::Display for TopOutCondition {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum GameOverReason {
+    BlockOut,
+    LockOut,
+    PartialLockOut,
+    GarbageOut,
+}
+
+impl From<TopOutCondition> for Option<GameOverReason> {
+    fn from(c: TopOutCondition) -> Self {
+        if c.contains(TopOutCondition::PARTIAL_LOCK_OUT) {
+            return Some(GameOverReason::PartialLockOut);
+        }
+        if c.contains(TopOutCondition::LOCK_OUT) {
+            return Some(GameOverReason::LockOut);
+        }
+        if c.contains(TopOutCondition::GARBAGE_OUT) {
+            return Some(GameOverReason::GarbageOut);
+        }
+        None
     }
 }
 
@@ -214,7 +237,7 @@ pub struct GameParams {
     // https://harddrop.com/wiki/ARE
     pub are: Frames,
     pub line_clear_delay: Frames,
-    pub loss_condition: LossCondition,
+    pub top_out_condition: TopOutCondition,
 }
 
 impl Default for GameParams {
@@ -230,7 +253,7 @@ impl Default for GameParams {
             arr: 2,
             are: 40,
             line_clear_delay: 40,
-            loss_condition: LossCondition::default(),
+            top_out_condition: TopOutCondition::default(),
         }
     }
 }
@@ -490,7 +513,9 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
                 playfield.visible_rows,
             );
             if !sfp.can_put_onto(playfield) {
-                return Ok(Some(Box::new(GameStateGameOver::default())));
+                return Ok(Some(Box::new(GameStateGameOver::new(
+                    GameOverReason::BlockOut,
+                ))));
             }
             data.hold_piece = Some(fp.piece);
             data.falling_piece = Some(sfp);
@@ -569,9 +594,10 @@ impl GameStateLock {
         config: &GameConfig<L>,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         let fp = &data.falling_piece.unwrap();
-        let r = config.params.loss_condition.check(fp, &data.playfield);
+        let r = config.params.top_out_condition.check(fp, &data.playfield);
         if !r.is_empty() {
-            return Ok(Some(Box::new(GameStateGameOver::by_lock_out(r))));
+            let r: Option<GameOverReason> = r.into();
+            return Ok(Some(Box::new(GameStateGameOver::new(r.unwrap()))));
         }
         let r = fp.put_onto(&mut data.playfield);
         assert!(r.is_empty());
@@ -662,6 +688,11 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateSpawnPiece {
                     data.playfield.visible_rows,
                 );
                 data.falling_piece = Some(fp);
+                if !fp.can_put_onto(&data.playfield) {
+                    return Ok(Some(Box::new(GameStateGameOver::new(
+                        GameOverReason::LockOut,
+                    ))));
+                }
             } else {
                 return Err("no next piece found".into());
             };
@@ -675,14 +706,14 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateSpawnPiece {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone)]
 struct GameStateGameOver {
-    loss_cond: LossCondition,
+    reason: GameOverReason,
 }
 
 impl GameStateGameOver {
-    fn by_lock_out(cond: LossCondition) -> Self {
-        Self { loss_cond: cond }
+    fn new(reason: GameOverReason) -> Self {
+        Self { reason: reason }
     }
 }
 

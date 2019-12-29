@@ -72,6 +72,25 @@ fn generate_pieces() -> VecDeque<Piece> {
     ps.to_vec().into()
 }
 
+fn format_cell(cell: Cell<Piece>) -> (String, Color) {
+    match cell {
+        Cell::Block(p) => (
+            format!("{}", p),
+            match p {
+                Piece::I => Color::Cyan,
+                Piece::O => Color::Yellow,
+                Piece::T => Color::Magenta,
+                Piece::J => Color::Blue,
+                Piece::L => Color::LightRed,
+                Piece::S => Color::Green,
+                Piece::Z => Color::Red,
+            },
+        ),
+        Cell::Ghost(p) => (format!("{}", p), Color::DarkGray),
+        _ => (" ".into(), Color::Black),
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     const FRAME_TIME: time::Duration = time::Duration::from_micros(16666);
 
@@ -121,6 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Key::Char('q') => break,
                         Key::Char('z') => input |= Input::ROTATE_CCW,
                         Key::Char('x') => input |= Input::ROTATE_CW,
+                        Key::Char(' ') => input |= Input::HOLD,
                         Key::Right => input |= Input::MOVE_RIGHT,
                         Key::Left => input |= Input::MOVE_LEFT,
                         Key::Up => input |= Input::HARD_DROP,
@@ -144,29 +164,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Length(10), Constraint::Percentage(90)].as_ref())
                 .split(size);
+            let mut top = 0;
+            {
+                let mut text = vec![Text::raw("HOLD:")];
+                let t = if let Some(p) = game.data.hold_piece {
+                    format_cell(Cell::Block(p))
+                } else {
+                    ("".into(), Color::Black)
+                };
+                text.push(Text::styled(t.0, Style::default().fg(t.1)));
+                Paragraph::new(text.iter()).render(&mut f, Rect::new(0, top, 10, 1));
+                top += 1;
+            }
+            {
+                let mut text = vec![Text::raw("NEXT:")];
+                let mut ts: Vec<(String, Color)> = Vec::new();
+                for i in 0..5 {
+                    let t = if let Some(p) = game.data.next_pieces.get(i) {
+                        format_cell(Cell::Block(*p))
+                    } else {
+                        ("".into(), Color::Black)
+                    };
+                    ts.push(t);
+                }
+                for t in ts {
+                    text.push(Text::styled(t.0, Style::default().fg(t.1)));
+                }
+                Paragraph::new(text.iter()).render(&mut f, Rect::new(0, top, 10, 1));
+                top += 1;
+            }
             let pf = &game.data.playfield;
             let vd = ViewData::new(&game.data);
             for y in 0..pf.visible_rows {
                 for x in 0..pf.grid.num_cols() {
-                    let rect = Rect::new(x as u16, (pf.visible_rows - y) as u16, 1, 1);
-                    let t = match vd.get_cell(&game.data, x, y) {
-                        Cell::Block(p) => (
-                            format!("{}", p),
-                            match p {
-                                Piece::I => Color::Cyan,
-                                Piece::O => Color::Yellow,
-                                Piece::T => Color::Magenta,
-                                Piece::J => Color::Blue,
-                                Piece::L => Color::LightRed,
-                                Piece::S => Color::Green,
-                                Piece::Z => Color::Red,
-                            },
-                        ),
-                        Cell::Ghost(p) => (format!("{}", p), Color::DarkGray),
-                        _ => (" ".into(), Color::Black),
-                    };
-                    let text = [Text::styled(&t.0, Style::default().fg(t.1))];
-                    Paragraph::new(text.iter()).render(&mut f, rect);
+                    let t = format_cell(vd.get_cell(&game.data, x, y));
+                    let text = [Text::styled(t.0, Style::default().fg(t.1))];
+                    Paragraph::new(text.iter()).render(
+                        &mut f,
+                        Rect::new(x as u16, top + (pf.visible_rows - 1 - y) as u16, 1, 1),
+                    );
                 }
             }
             {
