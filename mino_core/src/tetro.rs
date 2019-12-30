@@ -1,8 +1,9 @@
-use super::common::{FallingPiece, GameLogic, Piece as PieceTrait, Playfield, Rotation};
+use super::common::{FallingPiece, GameLogic, Piece as PieceTrait, Playfield, Rotation, TSpin};
+use grid::IsEmpty;
 use lazy_static::lazy_static;
 use std::fmt;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Piece {
     I,
     T,
@@ -248,13 +249,15 @@ impl GameLogic<Piece> for WorldRuleLogic {
             rotation: Rotation::default(),
         }
     }
-    /// Reference: https://harddrop.com/wiki/SRS#How_Guideline_SRS_Really_Works
+    /// References:
+    /// * https://harddrop.com/wiki/SRS#How_Guideline_SRS_Really_Works
+    /// * https://harddrop.com/wiki/T-Spin
     fn rotate(
         &self,
         cw: bool,
         falling_piece: &FallingPiece<Piece>,
         playfield: &Playfield<Piece>,
-    ) -> Option<FallingPiece<Piece>> {
+    ) -> Option<(FallingPiece<Piece>, TSpin)> {
         let mut fp = falling_piece.clone();
         fp.rotation = if cw {
             fp.rotation.cw()
@@ -273,7 +276,53 @@ impl GameLogic<Piece> for WorldRuleLogic {
             fp.x += offsets1[i].0 - offsets2[i].0;
             fp.y += offsets1[i].1 - offsets2[i].1;
             if fp.can_put_onto(playfield) {
-                return Some(fp);
+                let tspin = if fp.piece == Piece::T {
+                    // check corder
+                    let mut n = 0;
+                    let center = (fp.x + 1, fp.y + 1);
+                    for dy in &[-1, 1] {
+                        for dx in &[-1, 1] {
+                            let x = center.0 + dx;
+                            let y = center.1 + dy;
+                            // outside of block
+                            if (x < 0 || y < 0)
+                                || !playfield.grid.is_valid_cell_index(x as usize, y as usize)
+                                || !playfield.grid.cell(x as usize, y as usize).is_empty()
+                            {
+                                n += 1;
+                            }
+                        }
+                    }
+                    if n >= 3 {
+                        // Check cell behinde the T piece.
+                        let d = match fp.rotation {
+                            Rotation::Cw0 => (0, -1),
+                            Rotation::Cw90 => (-1, 0),
+                            Rotation::Cw180 => (0, 1),
+                            Rotation::Cw270 => (1, 0),
+                        };
+                        let x = center.0 + d.0;
+                        let y = center.1 + d.1;
+                        // outside of block
+                        if (x < 0 || y < 0)
+                            || !playfield.grid.is_valid_cell_index(x as usize, y as usize)
+                            || !playfield.grid.cell(x as usize, y as usize).is_empty()
+                        {
+                            if n == 4 {
+                                TSpin::Normal // T-Spin triple variants
+                            } else {
+                                TSpin::Mini
+                            }
+                        } else {
+                            TSpin::Normal
+                        }
+                    } else {
+                        TSpin::None
+                    }
+                } else {
+                    TSpin::None
+                };
+                return Some((fp, tspin));
             }
         }
         None

@@ -123,7 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     terminal.hide_cursor()?;
     let mut stdin = termion::async_stdin().bytes();
 
-    for frame in 0..6000 {
+    while game.current_frame() < 6000 {
         let frame_started_at = time::Instant::now();
 
         if game.data.next_pieces.len() <= Piece::num() {
@@ -206,7 +206,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             {
-                let text = [Text::raw(format!("{}\n{:?}", frame, game))];
+                let text = [Text::raw(format!("{:?}", game))];
                 Paragraph::new(text.iter())
                     .style(Style::default().fg(Color::White).bg(Color::Black))
                     .wrap(true)

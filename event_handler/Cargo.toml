@@ -1,5 +1,5 @@
 [package]
-name = "event_manager"
+name = "event_handler"
 version = "0.1.0"
 authors = ["Shintaro Seki <s2pch.luck@gmail.com>"]
 edition = "2018"

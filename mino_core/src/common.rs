@@ -258,6 +258,19 @@ impl Default for GameParams {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum TSpin {
+    None,
+    Normal,
+    Mini,
+}
+
+impl Default for TSpin {
+    fn default() -> Self {
+        TSpin::None
+    }
+}
+
 pub trait GameLogic<P: Piece>: fmt::Debug {
     /// Create new falling piece at initial position.
     fn spawn_piece(
@@ -274,7 +287,7 @@ pub trait GameLogic<P: Piece>: fmt::Debug {
         cw: bool,
         falling_piece: &FallingPiece<P>,
         playfield: &Playfield<P>,
-    ) -> Option<FallingPiece<P>>;
+    ) -> Option<(FallingPiece<P>, TSpin)>;
 }
 
 #[derive(Debug, Clone)]
@@ -377,14 +390,12 @@ pub fn new_input_manager(das: Frames, arr: Frames) -> InputManager<Input, Frames
 
 //--- GameEventHandler
 
+// TODO
+
 // pub enum LineClearType {
 //     Normal,
 //     TSpin,
 //     TSpinMini,
-// }
-
-// pub enum GameEvent<'a, G> {
-//     Update(&'a G, Input),
 // }
 
 pub trait GameEventHandler<G>: fmt::Debug {
@@ -513,6 +524,7 @@ struct GameStatePlay {
     gravity_counter: Gravity,
     lock_delay_counter: Frames,
     is_piece_held: bool,
+    tspin: TSpin,
 }
 
 impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
@@ -544,7 +556,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
         // HARD_DROP
         if input.contains(Input::HARD_DROP) {
             fp.y -= num_droppable_rows as i32;
-            return Ok(Some(Box::new(GameStateLock::default())));
+            return Ok(Some(Box::new(GameStateLock::new(self.tspin))));
         }
 
         // HOLD
@@ -573,6 +585,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             data.falling_piece = Some(sfp);
             self.gravity_counter = 0.0;
             self.lock_delay_counter = 0;
+            self.tspin = TSpin::None;
             return Ok(None);
         }
 
@@ -583,12 +596,13 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             let should_lock = self.lock_delay_counter > config.params.lock_delay
                 || (config.params.lock_delay_cancel && input.contains(Input::SOFT_DROP));
             if should_lock {
-                return Ok(Some(Box::new(GameStateLock::default())));
+                return Ok(Some(Box::new(GameStateLock::new(self.tspin))));
             }
         } else if input.contains(Input::FIRM_DROP) {
             fp.y -= num_droppable_rows as i32;
             self.gravity_counter = 0.0;
             self.lock_delay_counter = 0;
+            self.tspin = TSpin::None;
             return Ok(None);
         } else {
             self.gravity_counter += config.params.gravity;
@@ -609,6 +623,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             t.x += dx;
             if t.can_put_onto(playfield) {
                 moved = t;
+                self.tspin = TSpin::None;
             }
         }
         let rotate = if input_mgr.handle(Input::ROTATE_CW) {
@@ -619,8 +634,9 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             (false, false)
         };
         if rotate.0 {
-            if let Some(rotated) = config.logic.rotate(rotate.1, &moved, playfield) {
-                moved = rotated;
+            if let Some(r) = config.logic.rotate(rotate.1, &moved, playfield) {
+                moved = r.0;
+                self.tspin = r.1;
             }
         }
         let num_droppable_rows = moved.droppable_rows(playfield);
@@ -630,16 +646,23 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             moved.y -= std::cmp::min(num_droppable_rows, self.gravity_counter as usize) as i32;
             self.gravity_counter = 0.0;
             self.lock_delay_counter = 0;
+            self.tspin = TSpin::None;
         }
         data.falling_piece = Some(moved);
         Ok(None)
     }
 }
 
-#[derive(Debug, Copy, Clone, Default)]
-struct GameStateLock;
+#[derive(Debug, Copy, Clone)]
+struct GameStateLock {
+    tspin: TSpin,
+}
 
 impl GameStateLock {
+    fn new(tspin: TSpin) -> Self {
+        Self { tspin: tspin }
+    }
+
     fn lock<P: Piece, L: GameLogic<P>>(
         &mut self,
         data: &mut GameData<P>,
@@ -782,6 +805,7 @@ pub struct Game<P: Piece, L> {
     pub config: GameConfig<L>,
     pub data: GameData<P>,
     pub event_handlers: GameEventHandlerManager<Self>,
+    frame: u64,
     state: Box<dyn GameState<P, L>>,
 }
 
@@ -791,6 +815,7 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
             config: config,
             data: data,
             event_handlers: GameEventHandlerManager::new(),
+            frame: 0,
             state: Box::new(GameStateInit {}),
         }
     }
@@ -798,8 +823,12 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
     pub fn current_state_id(&self) -> GameStateId {
         self.state.id()
     }
+    pub fn current_frame(&self) -> u64 {
+        self.frame
+    }
 
     pub fn update(&mut self, input: Input) {
+        self.frame += 1;
         let r = self.state.update(&mut self.data, &self.config, input);
         self.handle_result(r);
     }

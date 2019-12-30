@@ -194,6 +194,16 @@ where
         true
     }
 
+    pub fn num_filled_rows(&self) -> usize {
+        let mut n = 0;
+        for y in 0..self.num_rows {
+            if self.is_row_filled(y) {
+                n += 1;
+            }
+        }
+        n
+    }
+
     pub fn pluck_filled_rows(&mut self, placeholder: Option<C>) -> usize {
         let mut n = 0;
         for y in 0..self.num_rows {

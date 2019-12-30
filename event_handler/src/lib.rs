@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::{Rc, Weak};
 
 pub type EventHandlerId = u32;
@@ -63,6 +64,12 @@ impl<E> EventHandler<E> for EventHandlerManager<E> {
         for id in inactive_ids {
             self.handlers.remove(&id);
         }
+    }
+}
+
+impl<G> fmt::Debug for EventHandlerManager<G> {
+    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
+        Ok(())
     }
 }
 
