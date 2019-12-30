@@ -375,23 +375,43 @@ pub fn new_input_manager(das: Frames, arr: Frames) -> InputManager<Input, Frames
     mgr
 }
 
-//--- GameEvent
+//--- GameEventHandler
 
-// enum GameEvent {
-//     OnEnterState(GameStateId),
-//     OnExitState(GameStateId),
+// pub enum LineClearType {
+//     Normal,
+//     TSpin,
+//     TSpinMini,
 // }
 
-//--- GameState
+// pub trait GameEventHandler<P, L> {
+//     fn on_update(&mut self, game: &Game<P, L>, input: Input) {}
+//     fn on_piece_dropped(&mut self, game: &Game<P, L>) {}
+//     fn on_line_cleared(&mut self, n: usize) {}
+// }
+
+// #[derive(Default, Clone)]
+// pub struct GameEventHandlerManager {
+//     handlers: Vec<*GameEventHandler>,
+// }
+
+// impl GameEventHandlerManager {
+//     fn AddHandler(handler: *GameEventHandler) {
+//         //
+//     }
+// }
+
+//--- GameData
 
 #[derive(Debug, Clone)]
-pub struct GameStateData<P: Piece> {
+pub struct GameData<P: Piece> {
     pub playfield: Playfield<P>,
     pub falling_piece: Option<FallingPiece<P>>,
     pub hold_piece: Option<P>,
     pub next_pieces: VecDeque<P>,
     pub input_mgr: InputManager<Input, Frames>,
 }
+
+//--- GameState
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum GameStateId {
@@ -408,20 +428,19 @@ pub trait GameState<P: Piece, L>: fmt::Debug {
     fn id(&self) -> GameStateId;
     fn enter(
         &mut self,
-        _data: &mut GameStateData<P>,
+        _data: &mut GameData<P>,
         _config: &GameConfig<L>,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         Ok(None)
     }
     fn update(
         &mut self,
-        _data: &mut GameStateData<P>,
+        _data: &mut GameData<P>,
         _config: &GameConfig<L>,
         _input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         Ok(None)
     }
-    // fn exit(&mut self, _data: &mut GameStateData<P>, _config: &GameConfig<L>) {}
 }
 
 #[derive(Debug, Clone)]
@@ -444,7 +463,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateInit {
     }
     fn update(
         &mut self,
-        data: &mut GameStateData<P>,
+        data: &mut GameData<P>,
         _config: &GameConfig<L>,
         _input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
@@ -469,7 +488,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
     }
     fn enter(
         &mut self,
-        data: &mut GameStateData<P>,
+        data: &mut GameData<P>,
         _config: &GameConfig<L>,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         if data.falling_piece.is_none() {
@@ -479,7 +498,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
     }
     fn update(
         &mut self,
-        data: &mut GameStateData<P>,
+        data: &mut GameData<P>,
         config: &GameConfig<L>,
         input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
@@ -590,7 +609,7 @@ struct GameStateLock;
 impl GameStateLock {
     fn lock<P: Piece, L: GameLogic<P>>(
         &mut self,
-        data: &mut GameStateData<P>,
+        data: &mut GameData<P>,
         config: &GameConfig<L>,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         let fp = &data.falling_piece.unwrap();
@@ -616,7 +635,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLock {
     }
     fn enter(
         &mut self,
-        data: &mut GameStateData<P>,
+        data: &mut GameData<P>,
         _config: &GameConfig<L>,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         if data.falling_piece.is_none() {
@@ -627,7 +646,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLock {
     }
     fn update(
         &mut self,
-        data: &mut GameStateData<P>,
+        data: &mut GameData<P>,
         config: &GameConfig<L>,
         _input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
@@ -646,7 +665,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLineClear {
     }
     fn update(
         &mut self,
-        data: &mut GameStateData<P>,
+        data: &mut GameData<P>,
         config: &GameConfig<L>,
         _input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
@@ -675,7 +694,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateSpawnPiece {
     }
     fn update(
         &mut self,
-        data: &mut GameStateData<P>,
+        data: &mut GameData<P>,
         config: &GameConfig<L>,
         input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
@@ -728,12 +747,12 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateGameOver {
 #[derive(Debug)]
 pub struct Game<P: Piece, L> {
     pub config: GameConfig<L>,
-    pub data: GameStateData<P>,
+    pub data: GameData<P>,
     state: Box<dyn GameState<P, L>>,
 }
 
 impl<P: Piece, L: GameLogic<P>> Game<P, L> {
-    pub fn new(config: GameConfig<L>, data: GameStateData<P>) -> Self {
+    pub fn new(config: GameConfig<L>, data: GameData<P>) -> Self {
         Self {
             config: config,
             data: data,

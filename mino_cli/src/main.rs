@@ -5,8 +5,7 @@ extern crate termion;
 extern crate tui;
 use grid::IsEmpty;
 use mino_core::common::{
-    new_input_manager, Cell, FallingPiece, Game, GameConfig, GameParams, GameStateData, Input,
-    Playfield,
+    new_input_manager, Cell, FallingPiece, Game, GameConfig, GameData, GameParams, Input, Playfield,
 };
 use mino_core::tetro::{Piece, PieceGrid, WorldRuleLogic};
 use rand::seq::SliceRandom;
@@ -27,7 +26,7 @@ struct ViewData {
 }
 
 impl ViewData {
-    fn new(data: &GameStateData<Piece>) -> Self {
+    fn new(data: &GameData<Piece>) -> Self {
         Self {
             ghost_piece: if let Some(fp) = data.falling_piece {
                 let n = fp.droppable_rows(&data.playfield);
@@ -40,7 +39,7 @@ impl ViewData {
         }
     }
 
-    fn get_cell(&self, data: &GameStateData<Piece>, x: usize, y: usize) -> Cell<Piece> {
+    fn get_cell(&self, data: &GameData<Piece>, x: usize, y: usize) -> Cell<Piece> {
         let pf = &data.playfield;
         if let Some(fp) = data.falling_piece {
             let x = x as i32 - fp.x;
@@ -105,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             logic: WorldRuleLogic {},
         };
-        let data = GameStateData {
+        let data = GameData {
             playfield: Playfield {
                 visible_rows: 20,
                 grid: PieceGrid::new(10, 40, vec![]),
