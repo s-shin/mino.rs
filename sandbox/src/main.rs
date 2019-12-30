@@ -5,6 +5,7 @@ use clap::{App, SubCommand};
 
 mod associated_trait;
 mod custom_iterator;
+mod event_handling;
 mod impl_trait;
 mod state_machine;
 mod trait_method_return_self;
@@ -18,6 +19,7 @@ fn main() {
         .subcommand(SubCommand::with_name("impl_trait"))
         .subcommand(SubCommand::with_name("tui"))
         .subcommand(SubCommand::with_name("custom_iterator"))
+        .subcommand(SubCommand::with_name("event_handling"))
         .get_matches();
 
     if let Some(_matches) = matches.subcommand_matches("state_machine") {
@@ -42,6 +44,10 @@ fn main() {
     }
     if let Some(_matches) = matches.subcommand_matches("custom_iterator") {
         custom_iterator::run();
+        return;
+    }
+    if let Some(_matches) = matches.subcommand_matches("event_handling") {
+        event_handling::run();
         return;
     }
 }

@@ -4,5 +4,6 @@ members = [
   "mino_core",
   "grid",
   "input_counter",
+  "event_handler",
   "sandbox",
 ]

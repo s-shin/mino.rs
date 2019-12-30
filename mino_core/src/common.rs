@@ -1,5 +1,5 @@
 use input_counter::{Contains, InputCounter, InputManager};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::hash::Hash;
 
@@ -383,22 +383,55 @@ pub fn new_input_manager(das: Frames, arr: Frames) -> InputManager<Input, Frames
 //     TSpinMini,
 // }
 
-// pub trait GameEventHandler<P, L> {
-//     fn on_update(&mut self, game: &Game<P, L>, input: Input) {}
-//     fn on_piece_dropped(&mut self, game: &Game<P, L>) {}
-//     fn on_line_cleared(&mut self, n: usize) {}
+// pub enum GameEvent<'a, G> {
+//     Update(&'a G, Input),
 // }
 
-// #[derive(Default, Clone)]
-// pub struct GameEventHandlerManager {
-//     handlers: Vec<*GameEventHandler>,
-// }
+pub trait GameEventHandler<G>: fmt::Debug {
+    fn on_update(&mut self, _game: &G, _input: Input) {}
+    // fn on_piece_dropped(&mut self, _game: &G) {}
+    // fn on_line_cleared(&mut self, _n: usize) {}
+}
 
-// impl GameEventHandlerManager {
-//     fn AddHandler(handler: *GameEventHandler) {
-//         //
-//     }
-// }
+pub type GameEventHandlerId = u32;
+
+#[derive(Debug)]
+pub struct GameEventHandlerManager<G> {
+    last_id: GameEventHandlerId,
+    handlers: HashMap<GameEventHandlerId, Box<dyn GameEventHandler<G>>>,
+}
+
+impl<G> GameEventHandlerManager<G> {
+    pub fn new() -> Self {
+        Self {
+            last_id: 0,
+            handlers: HashMap::new(),
+        }
+    }
+    pub fn add(&mut self, handler: Box<dyn GameEventHandler<G>>) -> GameEventHandlerId {
+        let id = self.last_id;
+        self.last_id += 1;
+        self.handlers.insert(id, handler);
+        id
+    }
+    pub fn remove(&mut self, id: GameEventHandlerId) -> bool {
+        self.handlers.remove(&id).is_some()
+    }
+    pub fn get(&self, id: GameEventHandlerId) -> Option<&Box<dyn GameEventHandler<G>>> {
+        self.handlers.get(&id)
+    }
+    pub fn get_mut(&mut self, id: GameEventHandlerId) -> Option<&mut Box<dyn GameEventHandler<G>>> {
+        self.handlers.get_mut(&id)
+    }
+}
+
+impl<G: fmt::Debug> GameEventHandler<G> for GameEventHandlerManager<G> {
+    fn on_update(&mut self, game: &G, input: Input) {
+        for (_, handler) in &mut self.handlers {
+            handler.on_update(game, input);
+        }
+    }
+}
 
 //--- GameData
 
@@ -424,7 +457,7 @@ pub enum GameStateId {
     Error,
 }
 
-pub trait GameState<P: Piece, L>: fmt::Debug {
+trait GameState<P: Piece, L>: fmt::Debug {
     fn id(&self) -> GameStateId;
     fn enter(
         &mut self,
@@ -748,6 +781,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateGameOver {
 pub struct Game<P: Piece, L> {
     pub config: GameConfig<L>,
     pub data: GameData<P>,
+    pub event_handlers: GameEventHandlerManager<Self>,
     state: Box<dyn GameState<P, L>>,
 }
 
@@ -756,6 +790,7 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
         Self {
             config: config,
             data: data,
+            event_handlers: GameEventHandlerManager::new(),
             state: Box::new(GameStateInit {}),
         }
     }
