@@ -5,7 +5,7 @@ extern crate termion;
 extern crate tui;
 use grid::IsEmpty;
 use mino_core::common::{
-    Cell, FallingPiece, Game, GameConfig, GameData, GameParams, Input, Playfield,
+    Cell, FallingPiece, Game, GameConfig, GameData, GameEvent, GameParams, Input, Playfield, TSpin,
 };
 use mino_core::tetro::{Piece, PieceGrid, WorldRuleLogic};
 use rand::seq::SliceRandom;
@@ -123,15 +123,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     terminal.hide_cursor()?;
     let mut stdin = termion::async_stdin().bytes();
 
-    while game.frame_num() < 6000 {
+    // lines, tspin, remaining frames
+    let mut line_clear = (0, TSpin::None, 0);
+
+    loop {
         let frame_started_at = time::Instant::now();
 
-        {
-            let data = game.data();
-            if data.next_pieces.len() <= Piece::num() {
-                let mut ps = generate_pieces();
-                game.append_next_pieces(&mut ps);
-            }
+        if game.data().next_pieces.len() <= Piece::num() {
+            let mut ps = generate_pieces();
+            game.append_next_pieces(&mut ps);
         }
 
         let mut input = Input::default();
@@ -157,6 +157,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         game.update(input);
+
+        for event in &game.data().events {
+            match event {
+                GameEvent::LineCleared(n, t) => {
+                    line_clear = (*n, *t, 60 * 2);
+                    break;
+                }
+                _ => {}
+            }
+        }
 
         terminal.draw(|mut f| {
             let data = game.data();
@@ -209,6 +219,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Rect::new(x as u16, top + (pf.visible_rows - 1 - y) as u16, 1, 1),
                     );
                 }
+            }
+            top += 20;
+            if line_clear.2 > 0 {
+                line_clear.2 -= 1;
+                let t = match line_clear.1 {
+                    TSpin::None => format!("{}L", line_clear.0),
+                    TSpin::Mini => format!("TSM{}", line_clear.0),
+                    TSpin::Normal => format!("TS{}", line_clear.0),
+                };
+                let text = [Text::raw(&t)];
+                Paragraph::new(text.iter()).render(&mut f, Rect::new(0, top, 10, 1));
             }
             // Right pane
             {

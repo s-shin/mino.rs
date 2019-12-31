@@ -258,7 +258,7 @@ impl Default for GameParams {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TSpin {
     None,
     Normal,
@@ -655,6 +655,10 @@ impl GameStateLock {
             if data.playfield.grid.is_row_filled(y) {
                 return Ok(Some(Box::new(GameStateLineClear::default())));
             }
+        }
+        if data.tspin == TSpin::Mini {
+            // T-Spin (Mini) Zero
+            data.events.push(GameEvent::LineCleared(0, TSpin::Mini));
         }
         Ok(Some(Box::new(GameStateSpawnPiece::default())))
     }
