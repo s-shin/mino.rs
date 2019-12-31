@@ -1,5 +1,5 @@
 use input_counter::{Contains, InputCounter, InputManager};
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::fmt;
 use std::hash::Hash;
 
@@ -375,10 +375,10 @@ impl Contains<Input> for Input {
     }
 }
 
-pub fn new_input_manager(das: Frames, arr: Frames) -> InputManager<Input, Frames> {
+pub fn create_basic_input_manager(das: Frames, arr: Frames) -> InputManager<Input, Frames> {
     let mut mgr = InputManager::default();
     mgr.register(Input::HARD_DROP, InputCounter::new(0, 0));
-    mgr.register(Input::SOFT_DROP, InputCounter::new(0, 0));
+    mgr.register(Input::SOFT_DROP, InputCounter::new(0, 1));
     mgr.register(Input::FIRM_DROP, InputCounter::new(0, 0));
     mgr.register(Input::MOVE_LEFT, InputCounter::new(das, arr));
     mgr.register(Input::MOVE_RIGHT, InputCounter::new(das, arr));
@@ -388,56 +388,12 @@ pub fn new_input_manager(das: Frames, arr: Frames) -> InputManager<Input, Frames
     mgr
 }
 
-//--- GameEventHandler
+//--- GameEvent
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GameEvent {
     Update(Input),
     LineCleared(usize, TSpin),
-}
-
-pub trait GameEventHandler<G>: fmt::Debug {
-    fn handle(&mut self, _game: &G, _event: &GameEvent) {}
-}
-
-pub type GameEventHandlerId = u32;
-
-#[derive(Debug)]
-pub struct GameEventHandlerManager<G> {
-    last_id: GameEventHandlerId,
-    handlers: HashMap<GameEventHandlerId, Box<dyn GameEventHandler<G>>>,
-}
-
-impl<G> GameEventHandlerManager<G> {
-    pub fn new() -> Self {
-        Self {
-            last_id: 0,
-            handlers: HashMap::new(),
-        }
-    }
-    pub fn add(&mut self, handler: Box<dyn GameEventHandler<G>>) -> GameEventHandlerId {
-        let id = self.last_id;
-        self.last_id += 1;
-        self.handlers.insert(id, handler);
-        id
-    }
-    pub fn remove(&mut self, id: GameEventHandlerId) -> bool {
-        self.handlers.remove(&id).is_some()
-    }
-    // pub fn get(&self, id: GameEventHandlerId) -> Option<&Box<dyn GameEventHandler<G>>> {
-    //     self.handlers.get(&id)
-    // }
-    // pub fn get_mut(&mut self, id: GameEventHandlerId) -> Option<&mut Box<dyn GameEventHandler<G>>> {
-    //     self.handlers.get_mut(&id)
-    // }
-}
-
-impl<G: fmt::Debug> GameEventHandler<G> for GameEventHandlerManager<G> {
-    fn handle(&mut self, game: &G, event: &GameEvent) {
-        for (_, handler) in &mut self.handlers {
-            handler.handle(game, event);
-        }
-    }
 }
 
 //--- GameData
@@ -450,6 +406,27 @@ pub struct GameData<P: Piece> {
     pub next_pieces: VecDeque<P>,
     pub input_mgr: InputManager<Input, Frames>,
     pub tspin: TSpin,
+    pub events: Vec<GameEvent>,
+}
+
+impl<P: Piece> GameData<P> {
+    pub fn new(
+        playfield: Playfield<P>,
+        falling_piece: Option<FallingPiece<P>>,
+        hold_piece: Option<P>,
+        next_pieces: VecDeque<P>,
+        params: &GameParams,
+    ) -> Self {
+        Self {
+            playfield: playfield,
+            falling_piece: falling_piece,
+            hold_piece: hold_piece,
+            next_pieces: next_pieces,
+            input_mgr: create_basic_input_manager(params.das, params.arr),
+            tspin: TSpin::None,
+            events: Vec::new(),
+        }
+    }
 }
 
 //--- GameState
@@ -465,17 +442,15 @@ pub enum GameStateId {
     Error,
 }
 
-trait GameStateEventHandler {
-    fn handle(&mut self, event: &GameEvent);
-}
-
 trait GameState<P: Piece, L>: fmt::Debug {
     fn id(&self) -> GameStateId;
+    fn should_update_input_manager(&self) -> bool {
+        false
+    }
     fn enter(
         &mut self,
         _data: &mut GameData<P>,
         _config: &GameConfig<L>,
-        // _event_handler: &mut H,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         Ok(None)
     }
@@ -483,7 +458,6 @@ trait GameState<P: Piece, L>: fmt::Debug {
         &mut self,
         _data: &mut GameData<P>,
         _config: &GameConfig<L>,
-        _input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         Ok(None)
     }
@@ -511,7 +485,6 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateInit {
         &mut self,
         data: &mut GameData<P>,
         _config: &GameConfig<L>,
-        _input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         if data.falling_piece.is_some() {
             Ok(Some(Box::new(GameStatePlay::default())))
@@ -532,6 +505,9 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
     fn id(&self) -> GameStateId {
         GameStateId::Play
     }
+    fn should_update_input_manager(&self) -> bool {
+        true
+    }
     fn enter(
         &mut self,
         data: &mut GameData<P>,
@@ -546,16 +522,14 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
         &mut self,
         data: &mut GameData<P>,
         config: &GameConfig<L>,
-        input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         let input_mgr = &mut data.input_mgr;
-        input_mgr.update(input);
         let fp = data.falling_piece.as_mut().unwrap();
         let playfield = &data.playfield;
         let num_droppable_rows = fp.droppable_rows(playfield);
 
         // HARD_DROP
-        if input.contains(Input::HARD_DROP) {
+        if input_mgr.handle(Input::HARD_DROP) {
             fp.y -= num_droppable_rows as i32;
             return Ok(Some(Box::new(GameStateLock::new())));
         }
@@ -595,11 +569,13 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             self.gravity_counter = 0.0;
             self.lock_delay_counter += 1;
             let should_lock = self.lock_delay_counter > config.params.lock_delay
-                || (config.params.lock_delay_cancel && input.contains(Input::SOFT_DROP));
+                || (config.params.lock_delay_cancel
+                    && input_mgr.handle(Input::SOFT_DROP)
+                    && !input_mgr.is_repeating(Input::SOFT_DROP));
             if should_lock {
                 return Ok(Some(Box::new(GameStateLock::new())));
             }
-        } else if input.contains(Input::FIRM_DROP) {
+        } else if input_mgr.handle(Input::FIRM_DROP) {
             fp.y -= num_droppable_rows as i32;
             data.tspin = TSpin::None;
             self.gravity_counter = 0.0;
@@ -607,7 +583,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             return Ok(None);
         } else {
             self.gravity_counter += config.params.gravity;
-            if input.contains(Input::SOFT_DROP) {
+            if input_mgr.handle(Input::SOFT_DROP) {
                 self.gravity_counter += config.params.soft_drop_gravity;
             }
         }
@@ -703,7 +679,6 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLock {
         &mut self,
         data: &mut GameData<P>,
         config: &GameConfig<L>,
-        _input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         self.lock(data, config)
     }
@@ -722,12 +697,12 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateLineClear {
         &mut self,
         data: &mut GameData<P>,
         config: &GameConfig<L>,
-        _input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         if self.frame_count == 0 {
             let n = data.playfield.grid.pluck_filled_rows(Some(Cell::Empty));
+            data.events.push(GameEvent::LineCleared(n, data.tspin));
             if n == 0 {
-                // TODO: no lines cleared!?
+                return Err("FATAL: no lines cleared".into());
             }
         }
         self.frame_count += 1;
@@ -747,11 +722,13 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateSpawnPiece {
     fn id(&self) -> GameStateId {
         GameStateId::SpawnPiece
     }
+    fn should_update_input_manager(&self) -> bool {
+        true
+    }
     fn update(
         &mut self,
         data: &mut GameData<P>,
         config: &GameConfig<L>,
-        input: Input,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         if self.frame_count == 0 {
             if let Some(next) = data.next_pieces.pop_front() {
@@ -772,7 +749,6 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateSpawnPiece {
             };
         }
         self.frame_count += 1;
-        data.input_mgr.update(input);
         if self.frame_count <= config.params.are {
             return Ok(None);
         }
@@ -803,7 +779,6 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateGameOver {
 pub struct Game<P: Piece, L> {
     config: GameConfig<L>,
     data: GameData<P>,
-    event_handler_mgr: GameEventHandlerManager<Self>,
     frame_num: u64,
     state: Box<dyn GameState<P, L>>,
 }
@@ -813,7 +788,6 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
         Self {
             config: config,
             data: data,
-            event_handler_mgr: GameEventHandlerManager::new(),
             frame_num: 0,
             state: Box::new(GameStateInit {}),
         }
@@ -833,8 +807,13 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
     }
 
     pub fn update(&mut self, input: Input) {
+        self.data.events.clear();
+        self.data.events.push(GameEvent::Update(input));
         self.frame_num += 1;
-        let r = self.state.update(&mut self.data, &self.config, input);
+        if self.state.should_update_input_manager() {
+            self.data.input_mgr.update(input);
+        }
+        let r = self.state.update(&mut self.data, &self.config);
         self.handle_result(r);
     }
 

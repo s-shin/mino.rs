@@ -5,8 +5,7 @@ extern crate termion;
 extern crate tui;
 use grid::IsEmpty;
 use mino_core::common::{
-    new_input_manager, Cell, FallingPiece, Game, GameConfig, GameData, GameParams, Input,
-    Playfield, TSpin,
+    Cell, FallingPiece, Game, GameConfig, GameData, GameParams, Input, Playfield,
 };
 use mino_core::tetro::{Piece, PieceGrid, WorldRuleLogic};
 use rand::seq::SliceRandom;
@@ -105,17 +104,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             logic: WorldRuleLogic {},
         };
-        let data = GameData {
-            playfield: Playfield {
+        let data = GameData::new(
+            Playfield {
                 visible_rows: 20,
                 grid: PieceGrid::new(10, 40, vec![]),
             },
-            falling_piece: Option::None,
-            hold_piece: Option::None,
-            next_pieces: generate_pieces(),
-            input_mgr: new_input_manager(config.params.das, config.params.arr),
-            tspin: TSpin::None,
-        };
+            Option::None,
+            Option::None,
+            generate_pieces(),
+            &config.params,
+        );
         Game::new(config, data)
     };
 
@@ -170,6 +168,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Length(10), Constraint::Percentage(90)].as_ref())
                 .split(size);
+            // Left pane
             let mut top = 0;
             {
                 let mut text = vec![Text::raw("HOLD:")];
@@ -211,6 +210,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
             }
+            // Right pane
             {
                 let text = [Text::raw(format!("{:?}", game))];
                 Paragraph::new(text.iter())

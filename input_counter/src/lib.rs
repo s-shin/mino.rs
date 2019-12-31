@@ -19,6 +19,7 @@ pub struct InputCounter<Num = u8> {
     state: InputState,
     can_handle: bool,
     is_handled: bool,
+    is_repeating: bool,
     n: Num,
 }
 
@@ -34,6 +35,7 @@ impl<Num: NumAssign + Copy> InputCounter<Num> {
             state: InputState::Inactive,
             can_handle: false,
             is_handled: false,
+            is_repeating: false,
             n: Num::zero(),
         }
     }
@@ -42,6 +44,7 @@ impl<Num: NumAssign + Copy> InputCounter<Num> {
             self.state = InputState::Inactive;
             self.can_handle = false;
             self.is_handled = false;
+            self.is_repeating = false;
             self.n = Num::zero();
             return;
         }
@@ -55,6 +58,7 @@ impl<Num: NumAssign + Copy> InputCounter<Num> {
                 self.state = if self.opt_repeat.is_zero() {
                     InputState::End
                 } else {
+                    self.is_repeating = true;
                     InputState::Delay
                 };
             }
@@ -86,6 +90,9 @@ impl<Num: NumAssign + Copy> InputCounter<Num> {
         }
         false
     }
+    pub fn is_repeating(&self) -> bool {
+        self.is_repeating
+    }
 }
 
 pub trait Contains<T> {
@@ -98,6 +105,9 @@ pub struct InputManager<Input: Eq + Hash, Num> {
 }
 
 impl<Input: Eq + Hash + Clone, Num: NumAssign + Copy> InputManager<Input, Num> {
+    pub fn inputs(&self) -> &HashMap<Input, InputCounter<Num>> {
+        &self.inputs
+    }
     pub fn register(
         &mut self,
         input: Input,
@@ -120,6 +130,13 @@ impl<Input: Eq + Hash + Clone, Num: NumAssign + Copy> InputManager<Input, Num> {
     pub fn handle(&mut self, input: Input) -> bool {
         if let Some(c) = self.inputs.get_mut(&input) {
             c.handle()
+        } else {
+            false
+        }
+    }
+    pub fn is_repeating(&self, input: Input) -> bool {
+        if let Some(c) = self.inputs.get(&input) {
+            c.is_repeating()
         } else {
             false
         }
