@@ -21,11 +21,11 @@ use tui::style::{Color, Style};
 use tui::widgets::{Block, Paragraph, Text, Widget};
 use tui::Terminal;
 
-struct ViewData {
+struct ViewDataBuilder {
     ghost_piece: Option<FallingPiece<Piece>>,
 }
 
-impl ViewData {
+impl ViewDataBuilder {
     fn new(data: &GameData<Piece>) -> Self {
         Self {
             ghost_piece: if let Some(fp) = data.falling_piece {
@@ -109,8 +109,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 visible_rows: 20,
                 grid: PieceGrid::new(10, 40, vec![]),
             },
-            Option::None,
-            Option::None,
+            None,
+            None,
             generate_pieces(),
             &config.params,
         );
@@ -209,10 +209,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 top += 1;
             }
             let pf = &data.playfield;
-            let vd = ViewData::new(&data);
+            let vdb = ViewDataBuilder::new(&data);
             for y in 0..pf.visible_rows {
                 for x in 0..pf.grid.num_cols() {
-                    let t = format_cell(vd.get_cell(&data, x, y));
+                    let t = format_cell(vdb.get_cell(&data, x, y));
                     let text = [Text::styled(t.0, Style::default().fg(t.1))];
                     Paragraph::new(text.iter()).render(
                         &mut f,
