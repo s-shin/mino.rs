@@ -390,18 +390,14 @@ pub fn new_input_manager(das: Frames, arr: Frames) -> InputManager<Input, Frames
 
 //--- GameEventHandler
 
-// TODO
-
-// pub enum LineClearType {
-//     Normal,
-//     TSpin,
-//     TSpinMini,
-// }
+#[derive(Debug)]
+pub enum GameEvent {
+    Update(Input),
+    LineCleared(usize, TSpin),
+}
 
 pub trait GameEventHandler<G>: fmt::Debug {
-    fn on_update(&mut self, _game: &G, _input: Input) {}
-    // fn on_piece_dropped(&mut self, _game: &G) {}
-    // fn on_line_cleared(&mut self, _n: usize) {}
+    fn handle(&mut self, _game: &G, _event: &GameEvent) {}
 }
 
 pub type GameEventHandlerId = u32;
@@ -428,18 +424,18 @@ impl<G> GameEventHandlerManager<G> {
     pub fn remove(&mut self, id: GameEventHandlerId) -> bool {
         self.handlers.remove(&id).is_some()
     }
-    pub fn get(&self, id: GameEventHandlerId) -> Option<&Box<dyn GameEventHandler<G>>> {
-        self.handlers.get(&id)
-    }
-    pub fn get_mut(&mut self, id: GameEventHandlerId) -> Option<&mut Box<dyn GameEventHandler<G>>> {
-        self.handlers.get_mut(&id)
-    }
+    // pub fn get(&self, id: GameEventHandlerId) -> Option<&Box<dyn GameEventHandler<G>>> {
+    //     self.handlers.get(&id)
+    // }
+    // pub fn get_mut(&mut self, id: GameEventHandlerId) -> Option<&mut Box<dyn GameEventHandler<G>>> {
+    //     self.handlers.get_mut(&id)
+    // }
 }
 
 impl<G: fmt::Debug> GameEventHandler<G> for GameEventHandlerManager<G> {
-    fn on_update(&mut self, game: &G, input: Input) {
+    fn handle(&mut self, game: &G, event: &GameEvent) {
         for (_, handler) in &mut self.handlers {
-            handler.on_update(game, input);
+            handler.handle(game, event);
         }
     }
 }
@@ -453,6 +449,7 @@ pub struct GameData<P: Piece> {
     pub hold_piece: Option<P>,
     pub next_pieces: VecDeque<P>,
     pub input_mgr: InputManager<Input, Frames>,
+    pub tspin: TSpin,
 }
 
 //--- GameState
@@ -468,12 +465,17 @@ pub enum GameStateId {
     Error,
 }
 
+trait GameStateEventHandler {
+    fn handle(&mut self, event: &GameEvent);
+}
+
 trait GameState<P: Piece, L>: fmt::Debug {
     fn id(&self) -> GameStateId;
     fn enter(
         &mut self,
         _data: &mut GameData<P>,
         _config: &GameConfig<L>,
+        // _event_handler: &mut H,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         Ok(None)
     }
@@ -524,7 +526,6 @@ struct GameStatePlay {
     gravity_counter: Gravity,
     lock_delay_counter: Frames,
     is_piece_held: bool,
-    tspin: TSpin,
 }
 
 impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
@@ -556,7 +557,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
         // HARD_DROP
         if input.contains(Input::HARD_DROP) {
             fp.y -= num_droppable_rows as i32;
-            return Ok(Some(Box::new(GameStateLock::new(self.tspin))));
+            return Ok(Some(Box::new(GameStateLock::new())));
         }
 
         // HOLD
@@ -583,9 +584,9 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             }
             data.hold_piece = Some(fp.piece);
             data.falling_piece = Some(sfp);
+            data.tspin = TSpin::None;
             self.gravity_counter = 0.0;
             self.lock_delay_counter = 0;
-            self.tspin = TSpin::None;
             return Ok(None);
         }
 
@@ -596,13 +597,13 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             let should_lock = self.lock_delay_counter > config.params.lock_delay
                 || (config.params.lock_delay_cancel && input.contains(Input::SOFT_DROP));
             if should_lock {
-                return Ok(Some(Box::new(GameStateLock::new(self.tspin))));
+                return Ok(Some(Box::new(GameStateLock::new())));
             }
         } else if input.contains(Input::FIRM_DROP) {
             fp.y -= num_droppable_rows as i32;
+            data.tspin = TSpin::None;
             self.gravity_counter = 0.0;
             self.lock_delay_counter = 0;
-            self.tspin = TSpin::None;
             return Ok(None);
         } else {
             self.gravity_counter += config.params.gravity;
@@ -623,7 +624,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             t.x += dx;
             if t.can_put_onto(playfield) {
                 moved = t;
-                self.tspin = TSpin::None;
+                data.tspin = TSpin::None;
             }
         }
         let rotate = if input_mgr.handle(Input::ROTATE_CW) {
@@ -636,7 +637,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
         if rotate.0 {
             if let Some(r) = config.logic.rotate(rotate.1, &moved, playfield) {
                 moved = r.0;
-                self.tspin = r.1;
+                data.tspin = r.1;
             }
         }
         let num_droppable_rows = moved.droppable_rows(playfield);
@@ -644,9 +645,9 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             self.gravity_counter = 0.0;
         } else if self.gravity_counter >= 1.0 {
             moved.y -= std::cmp::min(num_droppable_rows, self.gravity_counter as usize) as i32;
+            data.tspin = TSpin::None;
             self.gravity_counter = 0.0;
             self.lock_delay_counter = 0;
-            self.tspin = TSpin::None;
         }
         data.falling_piece = Some(moved);
         Ok(None)
@@ -654,13 +655,11 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
 }
 
 #[derive(Debug, Copy, Clone)]
-struct GameStateLock {
-    tspin: TSpin,
-}
+struct GameStateLock {}
 
 impl GameStateLock {
-    fn new(tspin: TSpin) -> Self {
-        Self { tspin: tspin }
+    fn new() -> Self {
+        Self {}
     }
 
     fn lock<P: Piece, L: GameLogic<P>>(
@@ -802,10 +801,10 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateGameOver {
 
 #[derive(Debug)]
 pub struct Game<P: Piece, L> {
-    pub config: GameConfig<L>,
-    pub data: GameData<P>,
-    pub event_handlers: GameEventHandlerManager<Self>,
-    frame: u64,
+    config: GameConfig<L>,
+    data: GameData<P>,
+    event_handler_mgr: GameEventHandlerManager<Self>,
+    frame_num: u64,
     state: Box<dyn GameState<P, L>>,
 }
 
@@ -814,21 +813,27 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
         Self {
             config: config,
             data: data,
-            event_handlers: GameEventHandlerManager::new(),
-            frame: 0,
+            event_handler_mgr: GameEventHandlerManager::new(),
+            frame_num: 0,
             state: Box::new(GameStateInit {}),
         }
     }
 
-    pub fn current_state_id(&self) -> GameStateId {
-        self.state.id()
+    pub fn config(&self) -> &GameConfig<L> {
+        &self.config
     }
-    pub fn current_frame(&self) -> u64 {
-        self.frame
+    pub fn data(&self) -> &GameData<P> {
+        &self.data
+    }
+    pub fn frame_num(&self) -> u64 {
+        self.frame_num
+    }
+    pub fn state_id(&self) -> GameStateId {
+        self.state.id()
     }
 
     pub fn update(&mut self, input: Input) {
-        self.frame += 1;
+        self.frame_num += 1;
         let r = self.state.update(&mut self.data, &self.config, input);
         self.handle_result(r);
     }
@@ -846,5 +851,9 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
                 self.state = Box::new(GameStateError { reason: reason });
             }
         }
+    }
+
+    pub fn append_next_pieces(&mut self, pieces: &mut VecDeque<P>) {
+        self.data.next_pieces.append(pieces)
     }
 }

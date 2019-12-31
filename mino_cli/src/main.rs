@@ -5,7 +5,8 @@ extern crate termion;
 extern crate tui;
 use grid::IsEmpty;
 use mino_core::common::{
-    new_input_manager, Cell, FallingPiece, Game, GameConfig, GameData, GameParams, Input, Playfield,
+    new_input_manager, Cell, FallingPiece, Game, GameConfig, GameData, GameParams, Input,
+    Playfield, TSpin,
 };
 use mino_core::tetro::{Piece, PieceGrid, WorldRuleLogic};
 use rand::seq::SliceRandom;
@@ -113,6 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hold_piece: Option::None,
             next_pieces: generate_pieces(),
             input_mgr: new_input_manager(config.params.das, config.params.arr),
+            tspin: TSpin::None,
         };
         Game::new(config, data)
     };
@@ -123,12 +125,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     terminal.hide_cursor()?;
     let mut stdin = termion::async_stdin().bytes();
 
-    while game.current_frame() < 6000 {
+    while game.frame_num() < 6000 {
         let frame_started_at = time::Instant::now();
 
-        if game.data.next_pieces.len() <= Piece::num() {
-            let mut ps = generate_pieces();
-            game.data.next_pieces.append(&mut ps);
+        {
+            let data = game.data();
+            if data.next_pieces.len() <= Piece::num() {
+                let mut ps = generate_pieces();
+                game.append_next_pieces(&mut ps);
+            }
         }
 
         let mut input = Input::default();
@@ -156,6 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         game.update(input);
 
         terminal.draw(|mut f| {
+            let data = game.data();
             let size = f.size();
             Block::default()
                 .style(Style::default().bg(Color::Black))
@@ -167,7 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut top = 0;
             {
                 let mut text = vec![Text::raw("HOLD:")];
-                let t = if let Some(p) = game.data.hold_piece {
+                let t = if let Some(p) = data.hold_piece {
                     format_cell(Cell::Block(p))
                 } else {
                     ("".into(), Color::Black)
@@ -180,7 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut text = vec![Text::raw("NEXT:")];
                 let mut ts: Vec<(String, Color)> = Vec::new();
                 for i in 0..5 {
-                    let t = if let Some(p) = game.data.next_pieces.get(i) {
+                    let t = if let Some(p) = data.next_pieces.get(i) {
                         format_cell(Cell::Block(*p))
                     } else {
                         ("".into(), Color::Black)
@@ -193,11 +199,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Paragraph::new(text.iter()).render(&mut f, Rect::new(0, top, 10, 1));
                 top += 1;
             }
-            let pf = &game.data.playfield;
-            let vd = ViewData::new(&game.data);
+            let pf = &data.playfield;
+            let vd = ViewData::new(&data);
             for y in 0..pf.visible_rows {
                 for x in 0..pf.grid.num_cols() {
-                    let t = format_cell(vd.get_cell(&game.data, x, y));
+                    let t = format_cell(vd.get_cell(&data, x, y));
                     let text = [Text::styled(t.0, Style::default().fg(t.1))];
                     Paragraph::new(text.iter()).render(
                         &mut f,

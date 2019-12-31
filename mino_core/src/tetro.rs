@@ -284,7 +284,7 @@ impl GameLogic<Piece> for WorldRuleLogic {
                         for dx in &[-1, 1] {
                             let x = center.0 + dx;
                             let y = center.1 + dy;
-                            // outside of block
+                            // outside or block
                             if (x < 0 || y < 0)
                                 || !playfield.grid.is_valid_cell_index(x as usize, y as usize)
                                 || !playfield.grid.cell(x as usize, y as usize).is_empty()
@@ -303,7 +303,7 @@ impl GameLogic<Piece> for WorldRuleLogic {
                         };
                         let x = center.0 + d.0;
                         let y = center.1 + d.1;
-                        // outside of block
+                        // outside or block
                         if (x < 0 || y < 0)
                             || !playfield.grid.is_valid_cell_index(x as usize, y as usize)
                             || !playfield.grid.cell(x as usize, y as usize).is_empty()
