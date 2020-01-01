@@ -185,9 +185,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let t = if let Some(p) = data.hold_piece {
                     format_cell(Cell::Block(p))
                 } else {
-                    ("".into(), Color::Black)
+                    ("     ".into(), Color::Black)
                 };
-                text.push(Text::styled(t.0, Style::default().fg(t.1)));
+                text.push(Text::styled(t.0, Style::default().fg(Color::Black).bg(t.1)));
                 Paragraph::new(text.iter()).render(&mut f, Rect::new(0, top, 10, 1));
                 top += 1;
             }
@@ -198,12 +198,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let t = if let Some(p) = data.next_pieces.get(i) {
                         format_cell(Cell::Block(*p))
                     } else {
-                        ("".into(), Color::Black)
+                        ("     ".into(), Color::Black)
                     };
                     ts.push(t);
                 }
                 for t in ts {
-                    text.push(Text::styled(t.0, Style::default().fg(t.1)));
+                    text.push(Text::styled(t.0, Style::default().fg(Color::Black).bg(t.1)));
                 }
                 Paragraph::new(text.iter()).render(&mut f, Rect::new(0, top, 10, 1));
                 top += 1;
@@ -214,7 +214,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for y in 0..pf.visible_rows {
                     for x in 0..pf.grid.num_cols() {
                         let t = format_cell(vdb.get_cell(&data, x, y));
-                        let text = [Text::styled(t.0, Style::default().fg(t.1))];
+                        let text = [Text::styled(t.0, Style::default().fg(Color::Black).bg(t.1))];
                         Paragraph::new(text.iter()).render(
                             &mut f,
                             Rect::new(x as u16, top + (pf.visible_rows - 1 - y) as u16, 1, 1),
