@@ -188,7 +188,7 @@ fn research() -> Result<(), Box<dyn std::error::Error>> {
             },
             logic: WorldRuleLogic::default(),
         };
-        let data = GameData::new(
+        let mut data = GameData::new(
             Playfield {
                 visible_rows: 20,
                 grid: PieceGrid::new(10, 40, vec![]),
@@ -198,6 +198,7 @@ fn research() -> Result<(), Box<dyn std::error::Error>> {
             generate_pieces(),
             &config.params,
         );
+        data.input_manager = mino_core::common::create_input_manager_for_automation();
         Game::new(config, data)
     };
 
