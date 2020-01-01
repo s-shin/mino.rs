@@ -1,9 +1,29 @@
 use grid::IsEmpty;
 use mino_core::common::{Cell, FallingPiece, GameData, TSpin};
 use mino_core::tetro::Piece;
+use std::io;
+use std::io::Read;
+use termion::raw::{IntoRawMode, RawTerminal};
+use tui::backend::TermionBackend;
 use tui::layout::Rect;
 use tui::style::{Color, Style};
 use tui::widgets::{Paragraph, Text, Widget};
+use tui::Terminal;
+
+pub fn init_terminal() -> Result<
+    (
+        Terminal<TermionBackend<RawTerminal<io::Stdout>>>,
+        io::Bytes<termion::AsyncReader>,
+    ),
+    Box<dyn std::error::Error>,
+> {
+    let stdout = io::stdout().into_raw_mode()?;
+    let backend = TermionBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.hide_cursor()?;
+    let stdin = termion::async_stdin().bytes();
+    Ok((terminal, stdin))
+}
 
 struct ViewDataBuilder {
     ghost_piece: Option<FallingPiece<Piece>>,

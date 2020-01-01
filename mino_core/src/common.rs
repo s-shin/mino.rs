@@ -383,14 +383,14 @@ pub fn create_basic_input_manager(das: Frames, arr: Frames) -> InputManager<Inpu
 
 pub fn create_input_manager_for_automation() -> InputManager<Input, Frames> {
     let mut mgr = InputManager::default();
-    mgr.register(Input::HARD_DROP, InputCounter::new(0, 0));
-    mgr.register(Input::SOFT_DROP, InputCounter::new(0, 0));
-    mgr.register(Input::FIRM_DROP, InputCounter::new(0, 0));
-    mgr.register(Input::MOVE_LEFT, InputCounter::new(0, 0));
-    mgr.register(Input::MOVE_RIGHT, InputCounter::new(0, 0));
-    mgr.register(Input::ROTATE_CW, InputCounter::new(0, 0));
-    mgr.register(Input::ROTATE_CCW, InputCounter::new(0, 0));
-    mgr.register(Input::HOLD, InputCounter::new(0, 0));
+    mgr.register(Input::HARD_DROP, InputCounter::new(1, 0));
+    mgr.register(Input::SOFT_DROP, InputCounter::new(1, 0));
+    mgr.register(Input::FIRM_DROP, InputCounter::new(1, 0));
+    mgr.register(Input::MOVE_LEFT, InputCounter::new(1, 0));
+    mgr.register(Input::MOVE_RIGHT, InputCounter::new(1, 0));
+    mgr.register(Input::ROTATE_CW, InputCounter::new(1, 0));
+    mgr.register(Input::ROTATE_CCW, InputCounter::new(1, 0));
+    mgr.register(Input::HOLD, InputCounter::new(1, 0));
     mgr
 }
 
