@@ -67,7 +67,7 @@ fn format_cell(cell: Cell<Piece>) -> (String, Color) {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct LineClearInfo {
     pub n: usize,
     pub tspin: TSpin,
@@ -76,7 +76,7 @@ pub struct LineClearInfo {
 pub fn render<B>(
     f: &mut tui::Frame<B>,
     data: &GameData<Piece>,
-    line_clear_info: Option<&LineClearInfo>,
+    line_clear_info: Option<LineClearInfo>,
     pos: (u16, u16),
 ) where
     B: tui::backend::Backend,

@@ -239,9 +239,12 @@ impl GameLogic<Piece> for WorldRuleLogic {
         let mut fp = FallingPiece {
             piece: piece,
             x: ((playfield.grid.num_cols() - g.num_cols()) as i32) / 2,
-            y: (playfield.visible_rows as i32) - (g.num_rows() - top_pad) as i32 + 1,
+            y: (playfield.visible_rows as i32) - (g.num_rows() - top_pad) as i32,
             rotation: Rotation::default(),
         };
+        if piece != Piece::I {
+            fp.y += 1;
+        }
         if !fp.can_put_onto(playfield) {
             fp.y += 1;
         }

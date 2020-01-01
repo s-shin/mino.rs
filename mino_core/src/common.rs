@@ -387,6 +387,7 @@ pub fn create_basic_input_manager(das: Frames, arr: Frames) -> InputManager<Inpu
 pub enum GameEvent {
     Update(Input),
     LineCleared(usize, TSpin),
+    EnterState(GameStateId),
 }
 
 //--- GameData
@@ -435,7 +436,12 @@ pub enum GameStateId {
     Error,
 }
 
-trait GameState<P: Piece, L>: fmt::Debug {
+/// cf. https://stackoverflow.com/a/30353928
+trait GameStateClone<P, L> {
+    fn clone_box(&self) -> Box<dyn GameState<P, L>>;
+}
+
+trait GameState<P: Piece, L>: fmt::Debug + GameStateClone<P, L> {
     fn id(&self) -> GameStateId;
     fn should_update_input_manager(&self) -> bool {
         false
@@ -453,6 +459,22 @@ trait GameState<P: Piece, L>: fmt::Debug {
         _config: &GameConfig<L>,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         Ok(None)
+    }
+}
+
+impl<P, L, T> GameStateClone<P, L> for T
+where
+    P: Piece,
+    T: 'static + GameState<P, L> + Clone,
+{
+    fn clone_box(&self) -> Box<dyn GameState<P, L>> {
+        Box::new(self.clone())
+    }
+}
+
+impl<P: Piece, L> Clone for Box<dyn GameState<P, L>> {
+    fn clone(&self) -> Box<dyn GameState<P, L>> {
+        self.clone_box()
     }
 }
 
@@ -762,7 +784,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateGameOver {
 
 //--- Game
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Game<P: Piece, L> {
     config: GameConfig<L>,
     data: GameData<P>,
@@ -809,12 +831,18 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
             Ok(maybe_next) => {
                 if let Some(next) = maybe_next {
                     self.state = next;
+                    self.data
+                        .events
+                        .push(GameEvent::EnterState(self.state.id()));
                     let r = self.state.enter(&mut self.data, &self.config);
                     self.handle_result(r);
                 }
             }
             Err(reason) => {
                 self.state = Box::new(GameStateError { reason: reason });
+                self.data
+                    .events
+                    .push(GameEvent::EnterState(self.state.id()));
             }
         }
     }
