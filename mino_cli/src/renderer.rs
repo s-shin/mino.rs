@@ -131,15 +131,20 @@ pub fn render<B>(
         top += 20;
     }
     {
-        let text = [Text::raw("==========")];
+        let t = "=".repeat(10);
+        let text = [Text::raw(&t)];
         Paragraph::new(text.iter()).render(f, Rect::new(0, top, 10, 1));
         top += 1;
     }
-    if let Some(info) = line_clear_info {
-        let t = match info.tspin {
-            TSpin::None => format!("{} Lines!", info.n),
-            TSpin::Mini => format!("TSM{}!", "ZSTD".chars().nth(info.n).unwrap()),
-            TSpin::Normal => format!("TS{}!", "ZSTD".chars().nth(info.n).unwrap()),
+    {
+        let t = if let Some(info) = line_clear_info {
+            match info.tspin {
+                TSpin::None => format!("{} Lines!", info.n),
+                TSpin::Mini => format!("TSM{}!", "ZSTD".chars().nth(info.n).unwrap()),
+                TSpin::Normal => format!("TS{}!", "ZSTD".chars().nth(info.n).unwrap()),
+            }
+        } else {
+            " ".repeat(10)
         };
         let text = [Text::raw(&t)];
         Paragraph::new(text.iter()).render(f, Rect::new(0, top, 10, 1));

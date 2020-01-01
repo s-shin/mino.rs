@@ -229,25 +229,23 @@ impl PieceTrait for Piece {
 
 //---
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct WorldRuleLogic {}
 
 impl GameLogic<Piece> for WorldRuleLogic {
-    fn spawn_piece(
-        &self,
-        piece: Piece,
-        num_cols: usize,
-        _num_rows: usize,
-        num_visible_rows: usize,
-    ) -> FallingPiece<Piece> {
+    fn spawn_piece(&self, piece: Piece, playfield: &Playfield<Piece>) -> FallingPiece<Piece> {
         let g = piece.grid(Rotation::default());
         let top_pad = piece.grid_top_padding(Rotation::default());
-        FallingPiece {
+        let mut fp = FallingPiece {
             piece: piece,
-            x: ((num_cols - g.num_cols()) as i32) / 2,
-            y: (num_visible_rows as i32) - (g.num_rows() - top_pad) as i32,
+            x: ((playfield.grid.num_cols() - g.num_cols()) as i32) / 2,
+            y: (playfield.visible_rows as i32) - (g.num_rows() - top_pad) as i32 + 1,
             rotation: Rotation::default(),
+        };
+        if !fp.can_put_onto(playfield) {
+            fp.y += 1;
         }
+        fp
     }
     /// References:
     /// * https://harddrop.com/wiki/SRS#How_Guideline_SRS_Really_Works

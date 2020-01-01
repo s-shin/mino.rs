@@ -1,8 +1,10 @@
+extern crate clap;
 extern crate grid;
 extern crate mino_core;
 extern crate rand;
 extern crate termion;
 extern crate tui;
+use clap::{App, SubCommand};
 use mino_core::common::{Game, GameConfig, GameData, GameEvent, GameParams, Input, Playfield};
 use mino_core::tetro::{Piece, PieceGrid, WorldRuleLogic};
 use rand::seq::SliceRandom;
@@ -11,7 +13,7 @@ use std::io;
 use std::io::Read;
 use std::time;
 use termion::event::{Event, Key};
-use termion::raw::IntoRawMode;
+use termion::raw::{IntoRawMode, RawTerminal};
 use tui::backend::TermionBackend;
 use tui::layout::{Constraint, Direction, Layout};
 use tui::style::{Color, Style};
@@ -20,6 +22,21 @@ use tui::Terminal;
 
 mod renderer;
 
+fn init_terminal() -> Result<
+    (
+        Terminal<TermionBackend<RawTerminal<io::Stdout>>>,
+        io::Bytes<termion::AsyncReader>,
+    ),
+    Box<dyn std::error::Error>,
+> {
+    let stdout = io::stdout().into_raw_mode()?;
+    let backend = TermionBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.hide_cursor()?;
+    let stdin = termion::async_stdin().bytes();
+    Ok((terminal, stdin))
+}
+
 fn generate_pieces() -> VecDeque<Piece> {
     let mut rng = rand::thread_rng();
     let mut ps = Piece::slice().clone();
@@ -27,7 +44,7 @@ fn generate_pieces() -> VecDeque<Piece> {
     ps.to_vec().into()
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn debug() -> Result<(), Box<dyn std::error::Error>> {
     const FRAME_TIME: time::Duration = time::Duration::from_micros(16666);
 
     let mut game = {
@@ -36,10 +53,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // gravity: 0.0167,
                 gravity: 0.0,
                 are: 0,
+                lock_delay: 60 * 60 * 60 * 24,
                 line_clear_delay: 0,
                 ..GameParams::default()
             },
-            logic: WorldRuleLogic {},
+            logic: WorldRuleLogic::default(),
         };
         let data = GameData::new(
             Playfield {
@@ -54,11 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Game::new(config, data)
     };
 
-    let stdout = io::stdout().into_raw_mode()?;
-    let backend = TermionBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-    terminal.hide_cursor()?;
-    let mut stdin = termion::async_stdin().bytes();
+    let (mut terminal, mut stdin) = init_terminal()?;
 
     // lines, tspin, remaining frames
     let mut line_clear = (renderer::LineClearInfo::default(), 0);
@@ -79,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Key::Char('q') => break,
                         Key::Char('z') => input |= Input::ROTATE_CCW,
                         Key::Char('x') => input |= Input::ROTATE_CW,
-                        Key::Char(' ') => input |= Input::HOLD,
+                        Key::Char('c') | Key::Char(' ') => input |= Input::HOLD,
                         Key::Char('s') => input |= Input::FIRM_DROP,
                         Key::Right => input |= Input::MOVE_RIGHT,
                         Key::Left => input |= Input::MOVE_LEFT,
@@ -121,6 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &mut f,
                 game.data(),
                 if line_clear.1 > 0 {
+                    line_clear.1 -= 1;
                     Some(&line_clear.0)
                 } else {
                     None
@@ -141,6 +156,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if dt < FRAME_TIME {
             std::thread::sleep(FRAME_TIME - dt);
         }
+    }
+
+    Ok(())
+}
+
+fn research() -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let matches = App::new("mino_cli")
+        .subcommand(SubCommand::with_name("play"))
+        .subcommand(SubCommand::with_name("research"))
+        .get_matches();
+
+    if let Some(_matches) = matches.subcommand_matches("play") {
+        return debug();
+    }
+
+    if let Some(_matches) = matches.subcommand_matches("research") {
+        return research();
     }
 
     Ok(())

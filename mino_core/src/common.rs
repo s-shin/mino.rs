@@ -142,7 +142,7 @@ pub struct Playfield<P: Piece> {
 pub type Gravity = f32;
 
 /// 60 fps
-pub type Frames = u8;
+pub type Frames = u64;
 
 /// http://harddrop.com/wiki/Lock_delay
 #[derive(Debug, Copy, Clone)]
@@ -242,7 +242,6 @@ pub struct GameParams {
 
 impl Default for GameParams {
     fn default() -> Self {
-        // TODO
         GameParams {
             gravity: 0.1667, // 1/60
             soft_drop_gravity: 1.0,
@@ -273,13 +272,7 @@ impl Default for TSpin {
 
 pub trait GameLogic<P: Piece>: fmt::Debug {
     /// Create new falling piece at initial position.
-    fn spawn_piece(
-        &self,
-        piece: P,
-        num_cols: usize,
-        num_rows: usize,
-        num_visible_rows: usize,
-    ) -> FallingPiece<P>;
+    fn spawn_piece(&self, piece: P, playfield: &Playfield<P>) -> FallingPiece<P>;
     /// Rotate `falling_piece` on `playfield` by `cw`.
     /// If not rotatable, return None.
     fn rotate(
@@ -545,12 +538,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
                 }
                 data.next_pieces.pop_front().unwrap()
             };
-            let sfp = config.logic.spawn_piece(
-                np,
-                playfield.grid.num_cols(),
-                playfield.grid.num_rows(),
-                playfield.visible_rows,
-            );
+            let sfp = config.logic.spawn_piece(np, playfield);
             if !sfp.can_put_onto(playfield) {
                 return Ok(Some(Box::new(GameStateGameOver::new(
                     GameOverReason::BlockOut,
@@ -736,12 +724,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateSpawnPiece {
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
         if self.frame_count == 0 {
             if let Some(next) = data.next_pieces.pop_front() {
-                let fp = config.logic.spawn_piece(
-                    next,
-                    data.playfield.grid.num_cols(),
-                    data.playfield.grid.num_rows(),
-                    data.playfield.visible_rows,
-                );
+                let fp = config.logic.spawn_piece(next, &data.playfield);
                 data.falling_piece = Some(fp);
                 if !fp.can_put_onto(&data.playfield) {
                     return Ok(Some(Box::new(GameStateGameOver::new(
@@ -783,7 +766,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStateGameOver {
 pub struct Game<P: Piece, L> {
     config: GameConfig<L>,
     data: GameData<P>,
-    frame_num: u64,
+    frame_num: Frames,
     state: Box<dyn GameState<P, L>>,
 }
 
@@ -803,7 +786,7 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
     pub fn data(&self) -> &GameData<P> {
         &self.data
     }
-    pub fn frame_num(&self) -> u64 {
+    pub fn frame_num(&self) -> Frames {
         self.frame_num
     }
     pub fn state_id(&self) -> GameStateId {
