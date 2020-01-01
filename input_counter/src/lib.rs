@@ -4,7 +4,7 @@ use num_traits::NumAssign;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum InputState {
     Inactive,
     Delay,
@@ -58,7 +58,6 @@ impl<Num: NumAssign + Copy> InputCounter<Num> {
                 self.state = if self.opt_repeat.is_zero() {
                     InputState::End
                 } else {
-                    self.is_repeating = true;
                     InputState::Delay
                 };
             }
@@ -86,6 +85,7 @@ impl<Num: NumAssign + Copy> InputCounter<Num> {
         if self.can_handle {
             self.can_handle = false;
             self.is_handled = true;
+            self.is_repeating = self.state != InputState::End;
             return true;
         }
         false
@@ -150,36 +150,39 @@ mod tests {
     #[test]
     fn one_shot() {
         let mut c = InputCounter::new(0, 0);
-        assert!(!c.can_handle);
+        assert!(!c.can_handle());
         c.update(true);
-        assert!(c.can_handle);
+        assert!(c.can_handle());
         c.update(true); // ignored
-        assert!(c.can_handle);
+        assert!(c.can_handle());
         assert!(c.handle());
-        assert!(!c.can_handle);
+        assert!(!c.can_handle());
         c.update(true);
-        assert!(!c.can_handle);
+        assert!(!c.can_handle());
         c.update(false);
-        assert!(!c.can_handle);
+        assert!(!c.can_handle());
         c.update(true);
-        assert!(c.can_handle);
+        assert!(c.can_handle());
     }
     #[test]
     fn repeatable() {
         let mut c = InputCounter::new(1, 0);
-        assert!(!c.can_handle);
+        assert!(!c.can_handle());
+        assert!(!c.is_repeating());
         c.update(true);
-        assert!(c.can_handle);
-        c.update(true);
-        assert!(c.can_handle);
-        assert!(c.handle());
-        assert!(!c.can_handle);
-        c.update(true);
-        assert!(c.can_handle);
+        assert!(c.can_handle());
+        assert!(!c.is_repeating());
         c.update(true); // ignored
-        assert!(c.can_handle);
+        assert!(c.can_handle());
         assert!(c.handle());
-        assert!(!c.can_handle);
+        assert!(!c.can_handle());
+        assert!(c.is_repeating());
+        c.update(true);
+        assert!(c.can_handle());
+        c.update(true); // ignored
+        assert!(c.can_handle());
+        assert!(c.handle());
+        assert!(!c.can_handle());
     }
     #[test]
     fn repeatable2() {

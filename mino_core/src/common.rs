@@ -404,7 +404,7 @@ pub struct GameData<P: Piece> {
     pub falling_piece: Option<FallingPiece<P>>,
     pub hold_piece: Option<P>,
     pub next_pieces: VecDeque<P>,
-    pub input_mgr: InputManager<Input, Frames>,
+    pub input_manager: InputManager<Input, Frames>,
     pub tspin: TSpin,
     pub events: Vec<GameEvent>,
 }
@@ -422,7 +422,7 @@ impl<P: Piece> GameData<P> {
             falling_piece: falling_piece,
             hold_piece: hold_piece,
             next_pieces: next_pieces,
-            input_mgr: create_basic_input_manager(params.das, params.arr),
+            input_manager: create_basic_input_manager(params.das, params.arr),
             tspin: TSpin::None,
             events: Vec::new(),
         }
@@ -523,7 +523,7 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
         data: &mut GameData<P>,
         config: &GameConfig<L>,
     ) -> Result<Option<Box<dyn GameState<P, L>>>, String> {
-        let input_mgr = &mut data.input_mgr;
+        let input_mgr = &mut data.input_manager;
         let fp = data.falling_piece.as_mut().unwrap();
         let playfield = &data.playfield;
         let num_droppable_rows = fp.droppable_rows(playfield);
@@ -570,8 +570,8 @@ impl<P: Piece, L: GameLogic<P>> GameState<P, L> for GameStatePlay {
             self.lock_delay_counter += 1;
             let should_lock = self.lock_delay_counter > config.params.lock_delay
                 || (config.params.lock_delay_cancel
-                    && input_mgr.handle(Input::SOFT_DROP)
-                    && !input_mgr.is_repeating(Input::SOFT_DROP));
+                    && !input_mgr.is_repeating(Input::SOFT_DROP)
+                    && input_mgr.handle(Input::SOFT_DROP));
             if should_lock {
                 return Ok(Some(Box::new(GameStateLock::new())));
             }
@@ -815,7 +815,7 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
         self.data.events.push(GameEvent::Update(input));
         self.frame_num += 1;
         if self.state.should_update_input_manager() {
-            self.data.input_mgr.update(input);
+            self.data.input_manager.update(input);
         }
         let r = self.state.update(&mut self.data, &self.config);
         self.handle_result(r);

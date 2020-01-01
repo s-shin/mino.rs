@@ -208,23 +208,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Paragraph::new(text.iter()).render(&mut f, Rect::new(0, top, 10, 1));
                 top += 1;
             }
-            let pf = &data.playfield;
-            let vdb = ViewDataBuilder::new(&data);
-            for y in 0..pf.visible_rows {
-                for x in 0..pf.grid.num_cols() {
-                    let t = format_cell(vdb.get_cell(&data, x, y));
-                    let text = [Text::styled(t.0, Style::default().fg(t.1))];
-                    Paragraph::new(text.iter()).render(
-                        &mut f,
-                        Rect::new(x as u16, top + (pf.visible_rows - 1 - y) as u16, 1, 1),
-                    );
+            {
+                let pf = &data.playfield;
+                let vdb = ViewDataBuilder::new(&data);
+                for y in 0..pf.visible_rows {
+                    for x in 0..pf.grid.num_cols() {
+                        let t = format_cell(vdb.get_cell(&data, x, y));
+                        let text = [Text::styled(t.0, Style::default().fg(t.1))];
+                        Paragraph::new(text.iter()).render(
+                            &mut f,
+                            Rect::new(x as u16, top + (pf.visible_rows - 1 - y) as u16, 1, 1),
+                        );
+                    }
                 }
+                top += 20;
             }
-            top += 20;
+            {
+                let text = [Text::raw("0123456789")];
+                Paragraph::new(text.iter()).render(&mut f, Rect::new(0, top, 10, 1));
+                top += 1;
+            }
             if line_clear.2 > 0 {
                 line_clear.2 -= 1;
                 let t = match line_clear.1 {
-                    TSpin::None => format!("{}L", line_clear.0),
+                    TSpin::None => format!("L{}", line_clear.0),
                     TSpin::Mini => format!("TSM{}", line_clear.0),
                     TSpin::Normal => format!("TS{}", line_clear.0),
                 };
