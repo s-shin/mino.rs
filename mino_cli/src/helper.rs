@@ -1,4 +1,5 @@
-use mino_core::tetro::Piece;
+use mino_core::common::{Game, GameStateId, Input};
+use mino_core::tetro::{Piece, WorldRuleLogic};
 use rand::seq::SliceRandom;
 use std::collections::VecDeque;
 
@@ -21,19 +22,19 @@ pub fn tspin_num_to_en_str_long(n: u8) -> &'static str {
     }
 }
 
-// pub fn update_util(
-//     game: &mut Game<Piece, WorldRuleLogic>,
-//     state_id: GameStateId,
-//     limit: i32,
-// ) -> bool {
-//     for i in 0.. {
-//         if game.state_id() == state_id {
-//             return true;
-//         }
-//         game.update(Input::default());
-//         if limit > 0 && i > limit {
-//             return false;
-//         }
-//     }
-//     false
-// }
+pub fn update_util(
+    game: &mut Game<Piece, WorldRuleLogic>,
+    state_id: GameStateId,
+    limit: i32,
+) -> bool {
+    for i in 0.. {
+        if game.state_id() == state_id {
+            return true;
+        }
+        game.update(Input::default());
+        if limit > 0 && i > limit {
+            return false;
+        }
+    }
+    false
+}
