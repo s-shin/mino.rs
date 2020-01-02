@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    // {
+    //   "type": "lldb",
+    //   "request": "launch",
+    //   "name": "Cargo test for grid",
+    //   "cargo": {
+    //     "args": ["test", "--no-run", "--lib"],
+    //     "filter": {
+    //       "kind": "lib",
+    //       "name": "grid"
+    //     }
+    //   }
+    // },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "mino_cli",
+      "sourceLanguages": ["rust"],
+      // "preLaunchTask": "cargo build",
+      "internalConsoleOptions": "openOnSessionStart",
+      "program": "${workspaceRoot}/target/debug/mino_cli",
+      "args": []
+    }
+  ]
+}
