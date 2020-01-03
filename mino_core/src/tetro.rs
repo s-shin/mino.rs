@@ -1,7 +1,9 @@
 use super::common::{FallingPiece, GameLogic, Piece as PieceTrait, Playfield, Rotation, TSpin};
 use grid::IsEmpty;
 use lazy_static::lazy_static;
+use std::error::Error;
 use std::fmt;
+use std::str::FromStr;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Piece {
@@ -35,6 +37,26 @@ impl Piece {
 impl fmt::Display for Piece {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self)
+    }
+}
+
+impl FromStr for Piece {
+    type Err = Box<dyn Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() != 1 {
+            return Err("invalid length".into());
+        }
+        match s.chars().nth(0).unwrap().to_uppercase().next().unwrap() {
+            'I' => Ok(Piece::I),
+            'T' => Ok(Piece::T),
+            'O' => Ok(Piece::O),
+            'S' => Ok(Piece::S),
+            'Z' => Ok(Piece::Z),
+            'J' => Ok(Piece::J),
+            'L' => Ok(Piece::L),
+            _ => Err("invalid char".into()),
+        }
     }
 }
 

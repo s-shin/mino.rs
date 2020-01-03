@@ -863,4 +863,7 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
     pub fn append_next_pieces(&mut self, pieces: &mut VecDeque<P>) {
         self.data.next_pieces.append(pieces)
     }
+    pub fn set_next_pieces(&mut self, pieces: VecDeque<P>) {
+        self.data.next_pieces = pieces;
+    }
 }
