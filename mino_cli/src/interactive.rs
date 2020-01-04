@@ -197,11 +197,11 @@ impl<W: io::Write> Renderer for HumanReadableRenderer<W> {
         Ok(())
     }
     fn render_error(&mut self, err: &dyn Error) -> Result<(), Box<dyn Error>> {
-        writeln!(self.w, "ERROR: {}", err)?;
+        write!(self.w, "ERROR: {}", err)?;
         Ok(())
     }
     fn render_message(&mut self, msg: &str) -> Result<(), Box<dyn Error>> {
-        writeln!(self.w, "{}", msg)?;
+        write!(self.w, "{}", msg)?;
         Ok(())
     }
 }
@@ -243,6 +243,17 @@ struct App {
     opts: Opts,
 }
 
+const HELP: &'static str = r#"Commands:
+- help|?
+- quit|q
+- setup
+- print|p
+- move|mv <MOVE>=<N> ...
+- set autogen=<BOOL>
+- next [add=<PIECES>] [set=<PIECES>] [auto(=force)]
+- history
+"#;
+
 impl App {
     fn new() -> Self {
         Self {
@@ -255,25 +266,25 @@ impl App {
         &mut self,
         line: &str,
         renderer: &mut R,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<bool, Box<dyn Error>> {
         let (cmd, args) = {
             match cmd::parse_command_line(line) {
                 Ok(x) => x,
                 Err(err) => {
                     renderer.render_error(&*err)?;
-                    return Ok(());
+                    return Ok(true);
                 }
             }
         };
         if cmd.chars().nth(0) == Some('#') {
-            return Ok(());
+            return Ok(true);
         }
         match cmd {
             "help" | "?" => {
-                renderer.render_message("TODO")?;
+                renderer.render_message(HELP)?;
             }
             "quit" | "q" => {
-                renderer.render_message("TODO")?;
+                return Ok(false);
             }
             "setup" => {
                 self.game = new_game();
@@ -285,7 +296,10 @@ impl App {
                 for arg in args {
                     let (mv, count) = match arg.parse_value::<usize>() {
                         Ok(kv) => (kv.key, kv.value.unwrap_or(1)),
-                        Err(e) => return renderer.render_error(&e),
+                        Err(e) => {
+                            renderer.render_error(&e)?;
+                            return Ok(true);
+                        }
                     };
                     for _ in 0..count {
                         match &*mv.to_lowercase() {
@@ -324,7 +338,8 @@ impl App {
                                 self.input(Input::HOLD);
                             }
                             _ => {
-                                return renderer.render_error_str(&format!("unknown move: {}", mv));
+                                renderer.render_error_str(&format!("unknown move: {}\n", mv))?;
+                                return Ok(true);
                             }
                         }
                     }
@@ -339,17 +354,19 @@ impl App {
                                 self.opts.autogen = match v.parse::<bool>() {
                                     Ok(v) => v,
                                     Err(err) => {
-                                        return renderer.render_error(&err);
+                                        renderer.render_error(&err)?;
+                                        return Ok(true);
                                     }
                                 };
                                 self.gen(false);
                             } else {
-                                return renderer.render_error_str("value is required");
+                                renderer.render_error_str("value is required\n")?;
+                                return Ok(true);
                             }
                         }
                         _ => {
-                            return renderer
-                                .render_error_str(&format!("unknown option: {}", arg.key));
+                            renderer.render_error_str(&format!("unknown option: {}\n", arg.key))?;
+                            return Ok(true);
                         }
                     }
                 }
@@ -371,24 +388,26 @@ impl App {
                         "auto" => match arg.value {
                             Some("force") => self.gen(true),
                             Some(v) => {
-                                return renderer.render_error_str(&format!("invalid value: {}", v));
+                                renderer.render_error_str(&format!("invalid value: {}\n", v))?;
+                                return Ok(true);
                             }
                             None => self.gen(false),
                         },
                         _ => {
-                            return renderer.render_error_str(&format!("unknown op: {}", arg.key));
+                            renderer.render_error_str(&format!("unknown op: {}\n", arg.key))?;
+                            return Ok(true);
                         }
                     }
                 }
             }
             "history" => {
-                renderer.render_message("TODO")?;
+                renderer.render_message("TODO\n")?;
             }
             _ => {
-                return renderer.render_error_str(&format!("unknown command: {}", cmd));
+                renderer.render_error_str(&format!("unknown command: {}\n", cmd))?;
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     fn input(&mut self, input: Input) {
@@ -417,7 +436,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         let readline = rl.readline("> ");
         match readline {
             Ok(line) => {
-                app.parse_line(&line, &mut renderer)?;
+                if !app.parse_line(&line, &mut renderer)? {
+                    break;
+                }
             }
             Err(ReadlineError::Interrupted) => {
                 break;
