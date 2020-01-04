@@ -10,7 +10,7 @@ jobs:
     steps:
     - name: Install dependencies
       run: |
-        apt install ncurses
+        sudo apt install ncurses
     - uses: actions/checkout@v1
     - name: Build
       run: cargo build --verbose
