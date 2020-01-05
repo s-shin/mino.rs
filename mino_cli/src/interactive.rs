@@ -411,8 +411,7 @@ impl App {
     }
 
     fn input(&mut self, input: Input) {
-        self.game.update(input);
-        helper::update_util(&mut self.game, GameStateId::Play, 1000);
+        self.game.update_until(vec![input], GameStateId::Play, 1000);
         self.gen(false);
     }
 
