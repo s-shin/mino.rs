@@ -396,7 +396,7 @@ pub fn create_input_manager_for_automation() -> InputManager<Input, Frames> {
 
 //--- GameEvent
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GameEvent {
     Update(Input),
     LineCleared(usize, TSpin),

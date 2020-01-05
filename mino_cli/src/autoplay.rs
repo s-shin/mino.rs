@@ -1,15 +1,20 @@
 use super::helper;
-use mino_core::common::{Game, GameConfig, GameData, GameParams, Input, PieceGrid, Playfield};
+use mino_core::common::{
+    Game, GameConfig, GameData, GameEvent, GameParams, GameStateId, Input, PieceGrid, Playfield,
+};
 use mino_core::tetro::{Piece, WorldRuleLogic};
 use std::error::Error;
+use std::time;
 use termion::event::{Event, Key};
 use tui::layout::{Constraint, Direction, Layout};
 use tui::style::{Color, Style};
 use tui::widgets::{Block, Paragraph, Text, Widget};
 
-// trait Player<P: mino_core::common::Piece, L> {
-//     fn decide_moves(&mut self, game: &Game<P, L>) -> Result<Vec<Input>, Box<dyn Error>>;
-// }
+pub fn decide_inputs(_game: &Game<Piece, WorldRuleLogic>) -> Vec<Input> {
+    vec![Input::HARD_DROP]
+}
+
+const FRAME_TIME: time::Duration = time::Duration::from_micros(16666);
 
 pub fn run() -> Result<(), Box<dyn Error>> {
     let mut game = {
@@ -23,7 +28,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             },
             logic: WorldRuleLogic::default(),
         };
-        let data = GameData::new(
+        let mut data = GameData::new(
             Playfield {
                 visible_rows: 20,
                 grid: PieceGrid::new(10, 40, vec![]),
@@ -33,12 +38,18 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             helper::generate_pieces(),
             &config.params,
         );
+        data.input_manager = mino_core::common::create_input_manager_for_automation();
         Game::new(config, data)
     };
 
     let (mut terminal, mut stdin) = helper::full_screen::init_terminal()?;
 
+    let mut inputs: Vec<Input> = Vec::new();
+    let mut inputs_idx = 0;
+
     loop {
+        let frame_started_at = time::Instant::now();
+
         if game.data().next_pieces.len() <= Piece::num() {
             let mut ps = helper::generate_pieces();
             game.append_next_pieces(&mut ps);
@@ -57,6 +68,17 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 break;
             }
         }
+
+        if inputs.len() == 0
+            || game
+                .data()
+                .events
+                .contains(&GameEvent::EnterState(GameStateId::Play))
+        {
+            inputs = decide_inputs(&game);
+            inputs_idx = 0;
+        }
+        game.update(inputs.get(inputs_idx).copied().unwrap_or_default());
 
         terminal.draw(|mut f| {
             let size = f.size();
@@ -79,7 +101,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             }
         })?;
 
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        let dt = time::Instant::now() - frame_started_at;
+        if dt < FRAME_TIME {
+            std::thread::sleep(FRAME_TIME - dt);
+        }
     }
 
     Ok(())
