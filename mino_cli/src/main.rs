@@ -7,6 +7,7 @@ extern crate termion;
 extern crate tui;
 use clap::{App, SubCommand};
 
+mod autoplay;
 mod helper;
 mod interactive;
 mod play;
@@ -15,14 +16,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = App::new("mino_cli")
         .subcommand(SubCommand::with_name("play").alias("p"))
         .subcommand(SubCommand::with_name("interactive").alias("i"))
+        .subcommand(SubCommand::with_name("autoplay").alias("ap"))
         .get_matches();
 
     if let Some(_matches) = matches.subcommand_matches("play") {
         return play::run();
     }
-
     if let Some(_matches) = matches.subcommand_matches("interactive") {
         return interactive::run();
+    }
+    if let Some(_matches) = matches.subcommand_matches("autoplay") {
+        return autoplay::run();
     }
 
     Ok(())

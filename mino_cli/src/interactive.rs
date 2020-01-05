@@ -306,7 +306,7 @@ impl App {
                             "l" | "left" => {
                                 self.input(Input::MOVE_LEFT);
                             }
-                            "ll" => {
+                            "le" | "leftend" => {
                                 for _ in 0..10 {
                                     self.input(Input::MOVE_LEFT);
                                 }
@@ -314,7 +314,7 @@ impl App {
                             "r" | "right" => {
                                 self.input(Input::MOVE_RIGHT);
                             }
-                            "rr" => {
+                            "re" | "rightend" => {
                                 for _ in 0..10 {
                                     self.input(Input::MOVE_RIGHT);
                                 }
@@ -411,8 +411,7 @@ impl App {
     }
 
     fn input(&mut self, input: Input) {
-        self.game.update(input);
-        helper::update_util(&mut self.game, GameStateId::Play, 1000);
+        self.game.update_until(vec![input], GameStateId::Play, 1000);
         self.gen(false);
     }
 

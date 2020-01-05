@@ -396,7 +396,7 @@ pub fn create_input_manager_for_automation() -> InputManager<Input, Frames> {
 
 //--- GameEvent
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GameEvent {
     Update(Input),
     LineCleared(usize, TSpin),
@@ -865,5 +865,22 @@ impl<P: Piece, L: GameLogic<P>> Game<P, L> {
     }
     pub fn set_next_pieces(&mut self, pieces: VecDeque<P>) {
         self.data.next_pieces = pieces;
+    }
+
+    pub fn update_until(
+        &mut self,
+        inputs: Vec<Input>,
+        end_state_id: GameStateId,
+        limit: Frames,
+    ) -> Vec<Vec<GameEvent>> {
+        let mut events: Vec<Vec<GameEvent>> = Vec::new();
+        for i in 0..limit {
+            self.update(inputs.get(i as usize).copied().unwrap_or_default());
+            events.push(self.data.events.clone());
+            if self.state_id() == end_state_id || self.state_id() == GameStateId::Error {
+                return events;
+            }
+        }
+        events
     }
 }
